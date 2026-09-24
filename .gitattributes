@@ -1,0 +1,19 @@
+# 统一行尾：仓库内使用 LF，避免跨平台协作时出现整文件 diff
+* text=auto eol=lf
+
+# 二进制资源不做行尾转换
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.webp binary
+*.woff binary
+*.woff2 binary
+*.ttf binary
+*.otf binary
+
+# 生成的数据文件与锁文件不参与文本 diff，并在 GitHub 上标记为生成内容
+public/data/*.geojson -diff linguist-generated=true
+public/data/*.json -diff linguist-generated=true
+pnpm-lock.yaml -diff linguist-generated=true

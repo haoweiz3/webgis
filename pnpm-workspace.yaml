@@ -1,0 +1,11 @@
+allowBuilds:
+  '@parcel/watcher': set this to true or false
+  esbuild: set this to true or false
+  protobufjs: set this to true or false
+  vue-demi: set this to true or false
+# pnpm 10+ 的依赖构建白名单（pnpm 11 已不再读取 package.json 中的 pnpm 字段）
+onlyBuiltDependencies:
+  - '@parcel/watcher'
+  - esbuild
+  - protobufjs
+  - vue-demi
