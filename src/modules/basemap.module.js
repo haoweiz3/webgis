@@ -1,5 +1,6 @@
 import * as Cesium from 'cesium'
 import { defineModule } from '../core/platform/defineModule.js'
+import { gcj02TilingScheme } from '../core/cesium/gcjTilingScheme.js'
 import { BASE_MAPS, TIANDITU_ANNOTATION } from '../config/scene.js'
 
 const TK = import.meta.env.VITE_TIANDITU_KEY || ''
@@ -8,6 +9,13 @@ const TK = import.meta.env.VITE_TIANDITU_KEY || ''
  * 底图与注记模块
  * 统一管理影像图层：高德影像 / 高德矢量 / 天地图影像（需免费 tk），
  * 影像与注记分离，便于图层树独立控制。
+ *
+ * 坐标系统一（GIS 专业要点）：
+ *   高德瓦片是 GCJ-02 加密坐标，直接叠加会让底图与矢量错位约 600 m；
+ *   天地图是 2000 国家大地坐标系，与 WGS-84 在演示精度下一致。
+ *   因此只给高德图层挂上纠偏瓦片方案（gcj02TilingScheme），
+ *   影像与注记用同一套方案，保证两者之间也相互对齐；
+ *   业务数据、量算与剖面口径始终是 WGS-84，不因底图切换而改变。
  */
 export default defineModule({
   id: 'basemap',
@@ -42,11 +50,14 @@ export default defineModule({
           credit: config.credit
         })
       }
+      // 高德影像/矢量瓦片均为 GCJ-02，需纠偏到 WGS-84 后显示；
+      // 将来接入 Esri / OSM 等本身就是 WGS-84 的底图时，不要再挂这个方案
       return new Cesium.UrlTemplateImageryProvider({
         url: config.url,
         subdomains: config.subdomains,
         maximumLevel: config.maximumLevel,
-        credit: config.credit
+        credit: config.credit,
+        tilingScheme: config.kind === 'amap' ? gcj02TilingScheme() : undefined
       })
     }
 
@@ -68,7 +79,8 @@ export default defineModule({
         url: 'https://wprd0{s}.is.autonavi.com/appmaptile?lang=zh_cn&size=1&style=8&x={x}&y={y}&z={z}',
         subdomains: ['1', '2', '3', '4'],
         maximumLevel: 18,
-        credit: '高德地图'
+        credit: '高德地图',
+        tilingScheme: gcj02TilingScheme()
       })
     }
 

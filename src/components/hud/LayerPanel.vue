@@ -103,13 +103,17 @@ function fly(bookmark) {
 .panel {
   display: flex;
   flex-direction: column;
+  /* 图层多时占用剩余高度并内部滚动，给下面的分析面板留出位置 */
+  flex: 1 1 auto;
   min-height: 0;
 }
 
 .panel__body {
   display: flex;
   flex-direction: column;
+  flex: 1 1 auto;
   gap: 12px;
+  min-height: 0;
   overflow-y: auto;
 }
 

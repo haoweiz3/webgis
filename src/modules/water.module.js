@@ -5,6 +5,10 @@ import { defineModule } from '../core/platform/defineModule.js'
  * 水域模块
  * 水面高程由水位数据驱动：拖动时间轴或手动设定水位，水面实时升降。
  * 水面对两岸的正确遮挡依赖 scene.globe.depthTestAgainstTerrain = true（在视图工厂里设置）。
+ *
+ * 数据形态：water.geojson 是 FeatureCollection（长江主河道 + 汉江等多段），
+ * 每个面的第一个环是外环，其余环是内环（江心洲），用 PolygonHierarchy 的
+ * 洞结构渲染，江心洲不会被水面盖住。
  */
 export default defineModule({
   id: 'water',
@@ -21,14 +25,35 @@ export default defineModule({
     const geo = ctx.utils.geo
     const createdIds = []
 
-    const waterRing = data.water?.geometry?.coordinates?.[0]
-    if (waterRing?.length) {
-      const flat = waterRing.flatMap(([lng, lat]) => [lng, lat])
+    const waterFeatures =
+      data.water?.type === 'FeatureCollection'
+        ? data.water.features ?? []
+        : data.water?.geometry
+          ? [data.water]
+          : []
+
+    waterFeatures.forEach((feature, index) => {
+      const rings = feature.geometry?.coordinates ?? []
+      const outer = rings[0]
+      if (!outer?.length) return
+      const holes = rings.slice(1).filter((ring) => ring?.length >= 3)
+
+      const flat = outer.flatMap(([lng, lat]) => [lng, lat])
+      const innerHierarchies = holes.map(
+        (hole) =>
+          new Cesium.PolygonHierarchy(
+            Cesium.Cartesian3.fromDegreesArray(hole.flatMap(([lng, lat]) => [lng, lat]))
+          )
+      )
+
       const entity = viewer.entities.add({
-        id: 'water-surface',
-        name: '长江武汉段水域面',
+        id: 'water-surface-' + index,
+        name: feature.properties?.name ?? '水域面',
         polygon: {
-          hierarchy: new Cesium.PolygonHierarchy(Cesium.Cartesian3.fromDegreesArray(flat)),
+          hierarchy: new Cesium.PolygonHierarchy(
+            Cesium.Cartesian3.fromDegreesArray(flat),
+            innerHierarchies
+          ),
           // 每帧读取当前水位，拖动时间轴或滑块时水面自动升降，无需重建实体
           height: new Cesium.CallbackProperty(
             () => geo.wusongToScene(data.effectiveWaterLevel),
@@ -40,7 +65,7 @@ export default defineModule({
         }
       })
       createdIds.push(entity.id)
-    }
+    })
 
     ;(data.shoreline?.features ?? []).forEach((feature, index) => {
       const coords = feature.geometry?.coordinates
@@ -61,7 +86,7 @@ export default defineModule({
     return {
       setLayerVisible(layerId, visible) {
         createdIds
-          .filter((id) => (layerId === 'layer-water' ? id === 'water-surface' : id.startsWith('shoreline-')))
+          .filter((id) => (layerId === 'layer-water' ? id.startsWith('water-surface-') : id.startsWith('shoreline-')))
           .forEach((id) => {
             const entity = viewer.entities.getById(id)
             if (entity) entity.show = visible

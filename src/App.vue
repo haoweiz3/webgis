@@ -43,7 +43,7 @@
 </template>
 
 <script setup>
-import { onBeforeUnmount, onMounted, ref } from 'vue'
+import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { createViewer } from '@/core/cesium/viewerFactory.js'
 import { isWebGLAvailable } from '@/core/cesium/viewerFactory.js'
 import { destroyViewer, setViewer } from '@/core/viewerHolder.js'
@@ -57,6 +57,7 @@ import { appErrors, recordError } from '@/core/diagnostics.js'
 import { useSceneStore } from '@/stores/scene.js'
 import { useTimeStore } from '@/stores/time.js'
 import { useDataStore } from '@/stores/data.js'
+import { useNavStore } from '@/stores/nav.js'
 
 import basemap from '@/modules/basemap.module.js'
 import terrain from '@/modules/terrain.module.js'
@@ -99,6 +100,15 @@ const fatal = ref('')
 const scene = useSceneStore()
 const time = useTimeStore()
 const data = useDataStore()
+const nav = useNavStore()
+
+// 站点选中 / 要素属性卡的选择状态统一在这里记入导航历史，
+// 这样列表点选、场景点选、面板关闭三种入口的"返回 / 前进"行为一致
+watch(
+  [() => data.selectedStationId, () => data.selectedFeature],
+  ([stationId, feature]) => nav.record({ stationId, feature }),
+  { flush: 'sync' }
+)
 
 let registry = null
 let offToast = null

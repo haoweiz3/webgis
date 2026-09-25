@@ -189,13 +189,18 @@ function clearAll() {
 .panel {
   display: flex;
   flex-direction: column;
+  /* 按内容自适应，但最多占半栏高度：展开淹没分析时不会把图层面板挤没 */
+  flex: 0 1 auto;
+  max-height: 52%;
   min-height: 0;
 }
 
 .panel__body {
   display: flex;
   flex-direction: column;
+  flex: 1 1 auto;
   gap: 10px;
+  min-height: 0;
   overflow-y: auto;
 }
 

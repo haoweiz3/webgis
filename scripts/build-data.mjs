@@ -21,6 +21,7 @@
 import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'node:fs'
 import { fileURLToPath, URL } from 'node:url'
 import { dirname, join } from 'node:path'
+import { STUDY_AREA } from '../src/config/scene.js'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const projectRoot = join(__dirname, '..')
@@ -126,9 +127,33 @@ const roundRing = (ring) => ring.map(([lng, lat]) => [round(lng), round(lat)])
 const roundLine = (line) => line.map(([lng, lat]) => [round(lng, 5), round(lat, 5)])
 
 /* ------------------------------------------------------------------ */
-/* 1. 长江武汉段中心线（上游 → 下游，自西南向东北）                        */
+/* 1. 河道中心线、岸线与河宽                                             */
+/*    优先使用真实水系（scripts/data-src/yangtze-water.json，来自 OSM，    */
+/*    由 pnpm fetch:water 生成）；缺失时回退到「中心线 + 假定河宽」的       */
+/*    示意几何，保证脚本在离线下也能跑通。                                 */
 /* ------------------------------------------------------------------ */
 
+const REAL_WATER_FILE = join(__dirname, 'data-src', 'yangtze-water.json')
+const realWater = existsSync(REAL_WATER_FILE)
+  ? JSON.parse(readFileSync(REAL_WATER_FILE, 'utf8'))
+  : null
+
+/** 参与渲染的河流：研究区以长江为主，汉江汇流口是重要地物 */
+const RENDERED_RIVERS = ['长江', '汉江']
+/** 江心洲（内环）最小面积（km²），碎小内环不出岸线 */
+const MIN_ISLAND_KM2 = 0.25
+/** 岸线弧段最小长度（米），过滤按左右岸拆分时产生的碎段 */
+const MIN_BANK_ARC_M = 500
+
+/** 滩地单元：按滩地高程分带（高程为演示取值） */
+const FLOOD_BANDS = [
+  { id: 'B1', name: '近岸低滩', inner: 0, outer: 260, elev: 24.0 },
+  { id: 'B2', name: '沿江滩地', inner: 260, outer: 640, elev: 25.5 },
+  { id: 'B3', name: '外滩低地', inner: 640, outer: 1150, elev: 27.0 },
+  { id: 'B4', name: '堤内洼地', inner: 1150, outer: 1750, elev: 28.5 }
+]
+
+/** 示意分支的中心线控制点（上游 → 下游，自西南向东北） */
 const CENTERLINE_CONTROL = [
   [113.9, 30.215], // 新滩口（上游入口）
   [113.975, 30.245], // 汉南
@@ -149,7 +174,7 @@ const CENTERLINE_CONTROL = [
   [114.7, 30.782] // 下游出口
 ]
 
-/** 河宽（半宽，米）随流程变化：城区段较窄，天兴洲段最宽 */
+/** 示意分支的河宽（半宽，米）随流程变化：城区段较窄，天兴洲段最宽 */
 const HALF_WIDTH_PROFILE = [
   [0.0, 350],
   [0.14, 420],
@@ -174,18 +199,17 @@ function profileValue(profile, t) {
   return profile[profile.length - 1][1]
 }
 
-const centerline = resample(CENTERLINE_CONTROL, 400)
-
-/** 河宽沿线数组（半宽，米），逐点记录便于偏移 */
-function halfWidthAt(index, total) {
+/** 示意分支的河宽函数 */
+function schematicHalfWidthAt(index, total) {
   return profileValue(HALF_WIDTH_PROFILE, total <= 1 ? 0 : index / (total - 1))
 }
 
-function channelEdge(side) {
-  return centerline.map((p, i) => {
-    const hw = halfWidthAt(i, centerline.length)
-    const prev = centerline[Math.max(0, i - 1)]
-    const next = centerline[Math.min(centerline.length - 1, i + 1)]
+/** 沿折线按法向偏移生成一侧边线 */
+function offsetEdge(line, side, widthAt) {
+  return line.map((p, i) => {
+    const hw = widthAt(i, line.length)
+    const prev = line[Math.max(0, i - 1)]
+    const next = line[Math.min(line.length - 1, i + 1)]
     const dx = (next[0] - prev[0]) * Math.cos(p[1] * D2R)
     const dy = next[1] - prev[1]
     const len = Math.hypot(dx, dy) || 1
@@ -195,41 +219,502 @@ function channelEdge(side) {
   })
 }
 
-const leftBank = channelEdge(1)
-const rightBank = channelEdge(-1)
-const waterRing = roundRing([...leftBank, ...[...rightBank].reverse(), leftBank[0]])
+/** 折线裁到研究区范围：保留最长的一段连续区间 */
+function clipLineToStudyArea(line) {
+  const inside = ([lng, lat]) =>
+    lng >= STUDY_AREA.west && lng <= STUDY_AREA.east && lat >= STUDY_AREA.south && lat <= STUDY_AREA.north
+  const runs = []
+  let current = []
+  for (const p of line) {
+    if (inside(p)) current.push(p)
+    else if (current.length) {
+      runs.push(current)
+      current = []
+    }
+  }
+  if (current.length) runs.push(current)
+  return runs.sort((a, b) => b.length - a.length)[0] ?? []
+}
+
+/** 折线方向统一为「上游 → 下游」（研究区自西南流向东北） */
+function orientDownstream(line) {
+  if (line.length < 2) return line
+  const first = line[0][0] + line[0][1]
+  const last = line[line.length - 1][0] + line[line.length - 1][1]
+  return first <= last ? line : line.slice().reverse()
+}
+
+/** 点在环内（射线法） */
+function pointInRing(pt, ring) {
+  let inside = false
+  for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+    const [xi, yi] = ring[i]
+    const [xj, yj] = ring[j]
+    if (yi > pt[1] !== yj > pt[1] && pt[0] < ((xj - xi) * (pt[1] - yi)) / (yj - yi) + xi) {
+      inside = !inside
+    }
+  }
+  return inside
+}
+
+/** 点是否在水面内（外环内、且不在江心洲的内环里） */
+function pointInWater(pt, polygons) {
+  return polygons.some(
+    (polygon) => pointInRing(pt, polygon.outer) && !polygon.holes.some((h) => pointInRing(pt, h))
+  )
+}
+
+/** 折线按法向等距偏移（side: 1 左法向 / -1 右法向） */
+function offsetPolyline(line, distanceM, side) {
+  return line.map((p, i) => {
+    const prev = line[Math.max(0, i - 1)]
+    const next = line[Math.min(line.length - 1, i + 1)]
+    const dx = (next[0] - prev[0]) * Math.cos(p[1] * D2R)
+    const dy = next[1] - prev[1]
+    const len = Math.hypot(dx, dy) || 1
+    return [
+      p[0] + metersToLng((-dy / len) * side * distanceM, p[1]),
+      p[1] + metersToLat((dx / len) * side * distanceM)
+    ]
+  })
+}
+
+/** 点到折线的最近点（逐段投影，比取最近顶点精确得多） */
+function nearestOnPolyline(pt, line) {
+  if (!line?.length) return null
+  const kx = 111320 * Math.cos(pt[1] * D2R)
+  const ky = 111320
+  let best = line[0]
+  let bestDistance = Number.POSITIVE_INFINITY
+  for (let i = 1; i < line.length; i++) {
+    const ax = (line[i - 1][0] - pt[0]) * kx
+    const ay = (line[i - 1][1] - pt[1]) * ky
+    const bx = (line[i][0] - pt[0]) * kx
+    const by = (line[i][1] - pt[1]) * ky
+    const dx = bx - ax
+    const dy = by - ay
+    const len2 = dx * dx + dy * dy
+    const k = len2 > 0 ? Math.min(1, Math.max(0, -(ax * dx + ay * dy) / len2)) : 0
+    const d = Math.hypot(ax + dx * k, ay + dy * k)
+    if (d < bestDistance) {
+      bestDistance = d
+      best = [pt[0] + (ax + dx * k) / kx, pt[1] + (ay + dy * k) / ky]
+    }
+  }
+  return best
+}
+
+/**
+ * 去掉外扩线上的回折点
+ * 凹岸处按法向偏移超过曲率半径时，偏移线会折回去自己压自己（自交）。
+ * 逐轮删除造成回折的顶点，可把外圈整形成简单折线；
+ * 滩地内圈不做处理，保证与岸线严格贴合。
+ */
+function removeReversals(line, passes = 4) {
+  let points = line
+  for (let pass = 0; pass < passes; pass++) {
+    if (points.length < 4) break
+    const out = [points[0]]
+    for (let i = 1; i < points.length - 1; i++) {
+      const a = out[out.length - 1]
+      const b = points[i]
+      const c = points[i + 1]
+      const v1 = [b[0] - a[0], b[1] - a[1]]
+      const v2 = [c[0] - b[0], c[1] - b[1]]
+      const dot = v1[0] * v2[0] + v1[1] * v2[1]
+      const len1 = Math.hypot(v1[0], v1[1])
+      const len2 = Math.hypot(v2[0], v2[1])
+      // 夹角超过约 100°，判定为回折，丢掉中间点
+      if (len1 > 0 && len2 > 0 && dot / (len1 * len2) < -Math.cos((80 * Math.PI) / 180)) continue
+      out.push(b)
+    }
+    out.push(points[points.length - 1])
+    if (out.length === points.length) break
+    points = out
+  }
+  return points
+}
+
+/**
+ * 把水面的外环按主轴拆成两条岸线
+ * 河段是"细长条带"形，沿主轴投影的两个极值点就是河道的两端，
+ * 在两端切开就得到左右两条岸线。
+ * @returns {Number[][][]} 两条岸线
+ */
+function splitRingByAxis(outer) {
+  const ring = outer.length > 1 ? outer.slice(0, -1) : outer
+  if (ring.length < 8) return []
+  const lat0 = ring.reduce((sum, p) => sum + p[1], 0) / ring.length
+  const kx = 111320 * Math.cos(lat0 * D2R)
+  const pts = ring.map(([lng, lat]) => [lng * kx, lat * 111320])
+  const cx = pts.reduce((sum, p) => sum + p[0], 0) / pts.length
+  const cy = pts.reduce((sum, p) => sum + p[1], 0) / pts.length
+
+  let sxx = 0
+  let sxy = 0
+  let syy = 0
+  for (const [x, y] of pts) {
+    const dx = x - cx
+    const dy = y - cy
+    sxx += dx * dx
+    sxy += dx * dy
+    syy += dy * dy
+  }
+  const theta = 0.5 * Math.atan2(2 * sxy, sxx - syy)
+  const ex = [Math.cos(theta), Math.sin(theta)]
+
+  let indexA = 0
+  let indexB = 0
+  let minValue = Number.POSITIVE_INFINITY
+  let maxValue = Number.NEGATIVE_INFINITY
+  pts.forEach(([x, y], i) => {
+    const v = (x - cx) * ex[0] + (y - cy) * ex[1]
+    if (v < minValue) {
+      minValue = v
+      indexA = i
+    }
+    if (v > maxValue) {
+      maxValue = v
+      indexB = i
+    }
+  })
+  const start = Math.min(indexA, indexB)
+  const end = Math.max(indexA, indexB)
+  return [ring.slice(start, end + 1), [...ring.slice(end), ...ring.slice(0, start + 1)]]
+}
+
+/**
+ * 由两条岸线配对生成中心线
+ * 比直接用 OSM 的 waterway=river 折线可靠：那条线在汊道、分汇流处会分叉，
+ * 拼起来会来回横跳，据此外扩的滩地单元会离岸很远。
+ * @returns {{points: Number[][], widths: Number[]}}
+ */
+function centerlineFromBanks(bankA, bankB, stepM = 200) {
+  // 两岸方向对齐：以 A 岸起点为准，让 B 岸从同一端开始
+  const alignedB =
+    haversine(bankA[0], bankB[0]) <= haversine(bankA[0], bankB[bankB.length - 1])
+      ? bankB
+      : bankB.slice().reverse()
+  const a = resample(bankA, stepM)
+  const b = resample(alignedB, stepM)
+  // 按相对里程逐点配对（不是取最近点）：两岸同一位置的连线才是过水断面。
+  // 用最近点配对时，河道弯曲处会把上游的点配到下游岸上，中心线会跑到水面外
+  const count = Math.max(8, Math.round(Math.max(lineLength(a), lineLength(b)) / stepM))
+  const points = []
+  const widths = []
+  for (let i = 0; i < count; i++) {
+    const t = count === 1 ? 0 : i / (count - 1)
+    const p = pointAt(a, t)
+    const q = pointAt(b, t)
+    points.push([(p[0] + q[0]) / 2, (p[1] + q[1]) / 2])
+    widths.push(haversine(p, q))
+  }
+  return { points, widths }
+}
+
+/** 岸线相对中心线的侧别（以水流方向为准，叉积为正即左岸） */
+function bankSide(arc, line) {
+  const p = arc[Math.floor(arc.length / 2)]
+  let bestIndex = 0
+  let bestDistance = Number.POSITIVE_INFINITY
+  for (let i = 0; i < line.length; i++) {
+    const d = haversine(p, line[i])
+    if (d < bestDistance) {
+      bestDistance = d
+      bestIndex = i
+    }
+  }
+  const back = line[Math.max(0, bestIndex - 1)]
+  const ahead = line[Math.min(line.length - 1, bestIndex + 1)]
+  const fx = (ahead[0] - back[0]) * Math.cos(p[1] * D2R)
+  const fy = ahead[1] - back[1]
+  const vx = (p[0] - line[bestIndex][0]) * Math.cos(p[1] * D2R)
+  const vy = p[1] - line[bestIndex][1]
+  return fx * vy - fy * vx >= 0 ? '左岸' : '右岸'
+}
+
+/**
+ * 按端点连通性把河段串成链，返回最长的一条
+ * 河段之间的断口（分汇流、未测绘段）不能硬接：直接按坐标排序后拼接，
+ * 会把与主河道断开的上游河段排到最前面，站点里程整体向上游偏移
+ * （实测武汉关水位站偏 20 km，就是这个原因）。
+ */
+function chainSegments(segments, toleranceM = 3000) {
+  let chains = segments.map((segment) => ({ segments: [segment], points: segment.points.slice() }))
+  const distance = (a, b) => haversine(a, b)
+  let merged = true
+  while (merged) {
+    merged = false
+    outer: for (let i = 0; i < chains.length; i++) {
+      for (let j = i + 1; j < chains.length; j++) {
+        const a = chains[i]
+        const b = chains[j]
+        const aHead = a.points[0]
+        const aTail = a.points[a.points.length - 1]
+        const bHead = b.points[0]
+        const bTail = b.points[b.points.length - 1]
+        const options = [
+          { gap: distance(aTail, bHead), points: a.points.concat(b.points) },
+          { gap: distance(aTail, bTail), points: a.points.concat(b.points.slice().reverse()) },
+          { gap: distance(aHead, bTail), points: b.points.concat(a.points) },
+          { gap: distance(aHead, bHead), points: b.points.slice().reverse().concat(a.points) }
+        ]
+        const best = options.reduce((min, item) => (item.gap < min.gap ? item : min), {
+          gap: Number.POSITIVE_INFINITY
+        })
+        if (best.gap <= toleranceM) {
+          chains[i] = { segments: [...a.segments, ...b.segments], points: best.points }
+          chains.splice(j, 1)
+          merged = true
+          break outer
+        }
+      }
+    }
+  }
+  return chains.sort((a, b) => lineLength(b.points) - lineLength(a.points))
+}
+
+let centerline
+/** 河道定位函数：t(0~1，上游→下游) → [lng, lat] */
+let pointOnRiver
+/** 滩地成环函数：(内边界距岸,m) (外边界距岸,m) (侧: 1 左岸 / -1 右岸) → 闭合环数组 */
+let buildBandRings
+const waterFeatures = []
+const shorelineFeatures = []
+
+if (realWater) {
+  /* ---------------- 真实水系分支（OSM） ---------------- */
+  const rivers = realWater.rivers ?? []
+  const mainRiver = rivers.find((r) => r.name.includes('长江')) ?? rivers[0]
+  const renderedRivers = rivers.filter((r) => RENDERED_RIVERS.some((n) => r.name.includes(n)))
+
+  /**
+   * 逐段处理河道：每个水面外环按主轴拆成两岸，再由两岸配对得到本段中心线。
+   * 不使用 OSM 的 waterway=river 折线，也不跨段硬拼中心线 —— 分汇流处
+   * OSM 中心线会分叉、河段之间本来就有断口，硬拼会在陆地上拉出假河道。
+   */
+  const keyOf = (line) => line.reduce((sum, p) => sum + p[0] + p[1], 0) / line.length
+
+  function buildSegment(polygon) {
+    const banks = splitRingByAxis(polygon.outer)
+    if (banks.length < 2) return null
+    const middle = centerlineFromBanks(banks[0], banks[1], 200)
+    if (middle.points.length < 2) return null
+    const points = orientDownstream(middle.points)
+    return { polygon, banks, points, key: keyOf(points), length: lineLength(points) }
+  }
+
+  const riverSegments = new Map()
+  for (const river of renderedRivers) {
+    riverSegments.set(
+      river.name,
+      river.polygons
+        .map(buildSegment)
+        .filter(Boolean)
+        .sort((a, b) => a.key - b.key)
+    )
+  }
+  const mainSegments = riverSegments.get(mainRiver.name) ?? []
+  console.log(
+    `  河道分段：${[...riverSegments.entries()].map(([n, s]) => `${n} ${s.length} 段`).join('、')}`
+  )
+
+  for (const river of renderedRivers) {
+    for (const polygon of river.polygons) {
+      waterFeatures.push({
+        type: 'Feature',
+        properties: {
+          id: polygon.id,
+          name: `${river.name}水域面`,
+          category: 'water',
+          river: river.name,
+          area_km2: polygon.areaKm2,
+          source: 'OpenStreetMap（ODbL 1.0）',
+          note: '真实水系数据，WGS-84'
+        },
+        geometry: {
+          type: 'Polygon',
+          coordinates: [roundRing(polygon.outer), ...polygon.holes.map(roundRing)]
+        }
+      })
+
+      // 江心洲：内环单独成线，让天兴洲这类江心洲在水面上显出来
+      polygon.holes.forEach((hole, index) => {
+        const areaKm2 = ringArea(hole) / 1e6
+        if (areaKm2 < MIN_ISLAND_KM2) return
+        shorelineFeatures.push({
+          type: 'Feature',
+          properties: {
+            id: `${polygon.id}-ISLAND-${index}`,
+            name: `江心洲（${areaKm2.toFixed(1)} km²）`,
+            category: 'shoreline',
+            river: river.name,
+            bank: '江心洲',
+            area_km2: Number(areaKm2.toFixed(3)),
+            source: 'OpenStreetMap（ODbL 1.0）'
+          },
+          geometry: { type: 'LineString', coordinates: roundLine(hole) }
+        })
+      })
+    }
+  }
+
+  // 岸线：按河段拆出的左右岸，逐段成要素
+  for (const river of renderedRivers) {
+    for (const segment of riverSegments.get(river.name) ?? []) {
+      for (const arc of segment.banks) {
+        const points = orientDownstream(arc)
+        if (lineLength(points) < MIN_BANK_ARC_M) continue
+        const side = bankSide(points, segment.points)
+        shorelineFeatures.push({
+          type: 'Feature',
+          properties: {
+            id: `${segment.polygon.id}-${side === '左岸' ? 'L' : 'R'}-${shorelineFeatures.length}`,
+            name: `${river.name}${side}`,
+            category: 'shoreline',
+            river: river.name,
+            bank: side,
+            source: 'OpenStreetMap（ODbL 1.0）'
+          },
+          geometry: { type: 'LineString', coordinates: roundLine(points) }
+        })
+      }
+    }
+  }
+
+  /* 河道分段结构（连通链）在这里统计一次，便于数据出问题时快速定位 */
+  const mainPolygons = mainRiver.polygons.map((p) => ({ outer: p.outer, holes: p.holes }))
+  const chains = chainSegments(mainSegments)
+  const mainChain = chains[0]
+  console.log(
+    `  长江河段 ${mainSegments.length} 段 → 连通链 ${chains.length} 条，主链 ` +
+      `${mainChain.segments.length} 段 / ${(lineLength(mainChain.points) / 1000).toFixed(1)} km`
+  )
+  const studyReach = clipLineToStudyArea(mainChain.points)
+  console.log(`  研究区主河道里程 ${(lineLength(studyReach) / 1000).toFixed(1)} km`)
+
+  /**
+   * 各河水域面（含长江与汉江），供站点锚点投影使用：
+   * 锚点 → 该河水面边界上最近的点。河名用于跨河断面（宗关在汉江上）。
+   */
+  const allPolygonSets = renderedRivers.map((river) => ({
+    name: river.name,
+    polygons: river.polygons.map((p) => ({ outer: p.outer, holes: p.holes }))
+  }))
+
+  /**
+   * 站点点位：把锚点投到真实水域面的边界上。
+   * 水文站本来就在岸边设站，这样比投到派生中心线稳得多 ——
+   * 中心线在汊道、大弯处会有几十米到几公里的偏移，而边界是权威数据。
+   */
+  pointOnRiver = (anchor, riverName) => {
+    const mainSet = allPolygonSets.find((item) => item.name === mainRiver.name) ?? allPolygonSets[0]
+    const polygons = riverName
+      ? allPolygonSets.find((item) => item.name === riverName)?.polygons ?? mainSet.polygons
+      : mainSet.polygons
+    let best = null
+    let bestDistance = Number.POSITIVE_INFINITY
+    for (const polygon of polygons) {
+      for (const ring of [polygon.outer, ...polygon.holes]) {
+        const candidate = nearestOnPolyline(anchor, ring)
+        if (!candidate) continue
+        const d = haversine(anchor, candidate)
+        if (d < bestDistance) {
+          bestDistance = d
+          best = candidate
+        }
+      }
+    }
+    return best ?? anchor
+  }
+
+  /**
+   * 滩地单元：逐河段沿真实岸线向外偏移。
+   * 不把各河段岸线拼成一条再外扩 —— 河段之间的断口会让环自己绕回去
+   * （实测拼接后每环 8~35 处自交），分段成环则每个环都是简单多边形。
+   * 内圈从岸边 0 m 起算，因此最近一圈严格贴在真实岸线上。
+   */
+  const bankArcs = { 左岸: [], 右岸: [] }
+  for (const segment of mainSegments) {
+    for (const arc of segment.banks) {
+      const points = clipLineToStudyArea(orientDownstream(arc))
+      if (points.length < 2 || lineLength(points) < MIN_BANK_ARC_M) continue
+      bankArcs[bankSide(points, segment.points)].push(points)
+    }
+  }
+  buildBandRings = (innerM, outerM, side) =>
+    bankArcs[side >= 0 ? '左岸' : '右岸'].map((arc) => {
+      // 内圈保持与真实岸线严格一致；外圈做一次轻度平滑，
+      const inner = offsetPolyline(arc, innerM, side)
+      const outer = removeReversals(offsetPolyline(arc, outerM, side))
+      return [...inner, ...[...outer].reverse(), inner[0]]
+    })
+} else {
+  /* ---------------- 示意几何分支（回退用） ---------------- */
+  console.warn('  ! 未找到 scripts/data-src/yangtze-water.json，水域面与岸线使用示意几何')
+  console.warn('    需要真实水系时先执行：pnpm fetch:water')
+
+  centerline = resample(CENTERLINE_CONTROL, 400)
+  // 回退分支同样按锚点投影：站点落在示意中心线上
+  pointOnRiver = (anchor) => {
+    let best = centerline[0]
+    let bestDistance = Number.POSITIVE_INFINITY
+    for (const p of centerline) {
+      const d = haversine(anchor, p)
+      if (d < bestDistance) {
+        bestDistance = d
+        best = p
+      }
+    }
+    return best
+  }
+  buildBandRings = (innerM, outerM, side) => {
+    const inner = offsetEdge(centerline, side, (i, total) => schematicHalfWidthAt(i, total) + innerM)
+    const outer = offsetEdge(centerline, side, (i, total) => schematicHalfWidthAt(i, total) + outerM)
+    return [[...inner, ...[...outer].reverse(), inner[0]]]
+  }
+
+  const leftBank = offsetEdge(centerline, 1, schematicHalfWidthAt)
+  const rightBank = offsetEdge(centerline, -1, schematicHalfWidthAt)
+
+  waterFeatures.push({
+    type: 'Feature',
+    properties: {
+      id: 'WATER-LINE',
+      name: '长江武汉段水域面（示意）',
+      category: 'water',
+      note: '示意简化数据，由中心线按河宽偏移生成'
+    },
+    geometry: {
+      type: 'Polygon',
+      coordinates: [roundRing([...leftBank, ...[...rightBank].reverse(), leftBank[0]])]
+    }
+  })
+
+  shorelineFeatures.push(
+    {
+      type: 'Feature',
+      properties: { id: 'SHORE-LEFT', name: '长江左岸（示意）', category: 'shoreline', bank: '左岸' },
+      geometry: { type: 'LineString', coordinates: roundLine(leftBank) }
+    },
+    {
+      type: 'Feature',
+      properties: { id: 'SHORE-RIGHT', name: '长江右岸（示意）', category: 'shoreline', bank: '右岸' },
+      geometry: { type: 'LineString', coordinates: roundLine(rightBank) }
+    }
+  )
+}
 
 /* ------------------------------------------------------------------ */
 /* 2. 淹没单元（按滩地高程分带，真实面积在生成时算好）                      */
 /* ------------------------------------------------------------------ */
 
-const FLOOD_BANDS = [
-  { id: 'B1', name: '近岸低滩', inner: 0, outer: 260, elev: 24.0 },
-  { id: 'B2', name: '沿江滩地', inner: 260, outer: 640, elev: 25.5 },
-  { id: 'B3', name: '外滩低地', inner: 640, outer: 1150, elev: 27.0 },
-  { id: 'B4', name: '堤内洼地', inner: 1150, outer: 1750, elev: 28.5 }
-]
-
-function bandEdge(distanceM, side) {
-  return centerline.map((p, i) => {
-    const hw = halfWidthAt(i, centerline.length) + distanceM
-    const prev = centerline[Math.max(0, i - 1)]
-    const next = centerline[Math.min(centerline.length - 1, i + 1)]
-    const dx = (next[0] - prev[0]) * Math.cos(p[1] * D2R)
-    const dy = next[1] - prev[1]
-    const len = Math.hypot(dx, dy) || 1
-    const nx = (-dy / len) * side
-    const ny = (dx / len) * side
-    return [p[0] + metersToLng(hw * nx, p[1]), p[1] + metersToLat(hw * ny)]
-  })
-}
-
 const floodFeatures = []
 for (const band of FLOOD_BANDS) {
   for (const side of [1, -1]) {
-    const inner = bandEdge(band.inner, side)
-    const outer = bandEdge(band.outer, side)
-    const ring = roundRing([...inner, ...[...outer].reverse(), inner[0]])
+    const rings = buildBandRings(band.inner, band.outer, side)
+    if (!rings.length) continue
+    const areaKm2 = Number((rings.reduce((sum, ring) => sum + ringArea(ring), 0) / 1e6).toFixed(3))
     floodFeatures.push({
       type: 'Feature',
       properties: {
@@ -238,9 +723,14 @@ for (const band of FLOOD_BANDS) {
         name: band.name,
         bank: side === 1 ? '左岸（北岸）' : '右岸（南岸）',
         elev_wusong_m: band.elev,
-        area_km2: Number((ringArea(ring) / 1e6).toFixed(3))
+        area_km2: areaKm2,
+        segmentCount: rings.length
       },
-      geometry: { type: 'Polygon', coordinates: [ring] }
+      // 多河段：每个河段一个环，用 MultiPolygon，避免跨河段的假连线
+      geometry:
+        rings.length === 1
+          ? { type: 'Polygon', coordinates: [roundRing(rings[0])] }
+          : { type: 'MultiPolygon', coordinates: rings.map((ring) => [roundRing(ring)]) }
     })
   }
 }
@@ -250,24 +740,32 @@ for (const band of FLOOD_BANDS) {
 /* ------------------------------------------------------------------ */
 
 const WATER_LEVEL_STATIONS = [
-  { id: 'WL01', name: '纱帽水位站', t: 0.07, base: 24.6, warn: 26.80, district: '汉南区' },
-  { id: 'WL02', name: '沌口水位站', t: 0.2, base: 24.4, warn: 26.90, district: '蔡甸区' },
-  { id: 'WL03', name: '金口水位站', t: 0.31, base: 24.2, warn: 26.90, district: '江夏区' },
-  { id: 'WL04', name: '白沙洲水位站', t: 0.42, base: 24.1, warn: 27.00, district: '洪山区' },
-  { id: 'WL05', name: '汉阳水位站', t: 0.52, base: 24.0, warn: 27.10, district: '汉阳区' },
-  { id: 'WL06', name: '汉口（武汉关）水位站', t: 0.58, base: 23.9, warn: 27.30, district: '江汉区' },
-  { id: 'WL07', name: '天兴洲水位站', t: 0.71, base: 23.7, warn: 27.00, district: '青山（化工）区' },
-  { id: 'WL08', name: '阳逻水位站', t: 0.88, base: 23.5, warn: 26.80, district: '新洲区' }
+  { id: 'WL01', name: '纱帽水位站', at: [114.032, 30.272], base: 24.6, warn: 26.80, district: '汉南区' },
+  { id: 'WL02', name: '沌口水位站', at: [114.152, 30.383], base: 24.4, warn: 26.90, district: '蔡甸区' },
+  { id: 'WL03', name: '金口水位站', at: [114.1, 30.3], base: 24.2, warn: 26.90, district: '江夏区' },
+  { id: 'WL04', name: '白沙洲水位站', at: [114.2315, 30.4932], base: 24.1, warn: 27.00, district: '洪山区' },
+  { id: 'WL05', name: '汉阳水位站', at: [114.2774, 30.5337], base: 24.0, warn: 27.10, district: '汉阳区' },
+  { id: 'WL06', name: '汉口（武汉关）水位站', at: [114.286, 30.571], base: 23.9, warn: 27.30, district: '江汉区' },
+  { id: 'WL07', name: '天兴洲水位站', at: [114.39, 30.652], base: 23.7, warn: 27.00, district: '青山（化工）区' },
+  { id: 'WL08', name: '阳逻水位站', at: [114.55, 30.682], base: 23.5, warn: 26.80, district: '新洲区' }
 ]
 
+/**
+ * 站点锚点：站点所在河段的真实位置（公开地名与桥梁位置整理，均为 WGS-84）。
+ * 生成时把锚点投影到该河的真实河道中心线水上点上，因此：
+ *   站点始终落在水面内，且不会因为标志物缺失而漂到别的河段。
+ * river 字段用于跨河断面：宗关在汉江上，必须在汉江上取点。
+ */
 const WATER_QUALITY_STATIONS = [
-  { id: 'WQ01', name: '杨泗港断面', t: 0.47, grade: 2, district: '汉阳区' },
-  { id: 'WQ02', name: '白沙洲断面', t: 0.4, grade: 2, district: '洪山区' },
-  { id: 'WQ03', name: '龙王庙断面', t: 0.57, grade: 2, district: '江汉区' },
-  { id: 'WQ04', name: '宗关（汉江）断面', t: 0.56, grade: 3, district: '硚口区', lngShift: -0.012, latShift: 0.014 },
-  { id: 'WQ05', name: '天兴洲断面', t: 0.7, grade: 2, district: '青山区' },
-  { id: 'WQ06', name: '滠水河口断面', t: 0.8, grade: 3, district: '新洲区', lngShift: 0.004, latShift: 0.036 },
-  { id: 'WQ07', name: '白浒山断面', t: 0.92, grade: 2, district: '青山区' }
+  { id: 'WQ01', name: '杨泗港断面', at: [114.2494, 30.5152], grade: 2, district: '汉阳区' },
+  { id: 'WQ02', name: '白沙洲断面', at: [114.205, 30.455], grade: 2, district: '洪山区' },
+  { id: 'WQ03', name: '龙王庙断面', at: [114.289, 30.573], grade: 2, district: '江汉区' },
+  // 宗关在汉江上（汉江汇入长江之前），锚点按真实水系北岸边核定
+  { id: 'WQ04', name: '宗关（汉江）断面', at: [114.19, 30.588], river: '汉江', grade: 3, district: '硚口区' },
+  { id: 'WQ05', name: '天兴洲断面', at: [114.4, 30.66], grade: 2, district: '青山区' },
+  { id: 'WQ06', name: '滠水河口断面', at: [114.375, 30.695], grade: 3, district: '新洲区' },
+  // 白浒山在长江南岸，取真实水系南岸边位置（原手写控制点偏北约 8 km，已按真实水系核定）
+  { id: 'WQ07', name: '白浒山断面', at: [114.6, 30.56], grade: 2, district: '青山区' }
 ]
 
 const RAIN_STATIONS = [
@@ -285,7 +783,7 @@ const RAIN_STATIONS = [
 const stations = []
 
 for (const s of WATER_LEVEL_STATIONS) {
-  const p = pointAt(centerline, s.t)
+  const p = pointOnRiver(s.at, s.river)
   stations.push({
     type: 'Feature',
     properties: {
@@ -298,18 +796,16 @@ for (const s of WATER_LEVEL_STATIONS) {
       variable: '水位',
       warnWusong: s.warn,
       baseWusong: s.base,
-      datum: '吴淞高程'
+      datum: '吴淞高程',
+      anchor: s.at.map((v) => round(v, 5)),
+      note: '点位由所在河段锚点投到真实水域面边界（岸边设站）'
     },
     geometry: { type: 'Point', coordinates: [round(p[0]), round(p[1])] }
   })
 }
 
 for (const s of WATER_QUALITY_STATIONS) {
-  const p = pointAt(centerline, s.t)
-  const shifted = [
-    p[0] + (s.lngShift || 0),
-    p[1] + (s.latShift || 0)
-  ]
+  const p = pointOnRiver(s.at, s.river)
   stations.push({
     type: 'Feature',
     properties: {
@@ -320,9 +816,11 @@ for (const s of WATER_QUALITY_STATIONS) {
       district: s.district,
       unit: '类',
       variable: '水质类别',
-      baseGrade: s.grade
+      baseGrade: s.grade,
+      anchor: s.at.map((v) => round(v, 5)),
+      note: '点位由所在河段锚点投到真实水域面边界（岸边设站）'
     },
-    geometry: { type: 'Point', coordinates: [round(shifted[0]), round(shifted[1])] }
+    geometry: { type: 'Point', coordinates: [round(p[0]), round(p[1])] }
   })
 }
 
@@ -525,31 +1023,8 @@ const fc = (features) => ({ type: 'FeatureCollection', features })
 
 console.log('生成时空数据 ...')
 
-writeJson('water.geojson', fc([
-  {
-    type: 'Feature',
-    properties: {
-      id: 'WATER-LINE',
-      name: '长江武汉段水域面',
-      category: 'water',
-      note: '示意简化数据，由中心线按河宽偏移生成'
-    },
-    geometry: { type: 'Polygon', coordinates: [waterRing] }
-  }
-]))
-
-writeJson('shoreline.geojson', fc([
-  {
-    type: 'Feature',
-    properties: { id: 'SHORE-LEFT', name: '长江左岸（北岸）岸线', category: 'shoreline', bank: '左岸' },
-    geometry: { type: 'LineString', coordinates: roundRing(leftBank) }
-  },
-  {
-    type: 'Feature',
-    properties: { id: 'SHORE-RIGHT', name: '长江右岸（南岸）岸线', category: 'shoreline', bank: '右岸' },
-    geometry: { type: 'LineString', coordinates: roundRing(rightBank) }
-  }
-]))
+writeJson('water.geojson', fc(waterFeatures))
+writeJson('shoreline.geojson', fc(shorelineFeatures))
 
 writeJson('flood-bands.geojson', fc(floodFeatures))
 writeJson('stations.geojson', fc(stations))
@@ -573,7 +1048,16 @@ writeJson('series.json', {
 writeJson('meta.json', {
   name: '长江武汉段三维时空数据可视化平台 - 演示数据',
   generatedAt: new Date().toISOString(),
-  disclaimer: '本数据集为演示用途：水域面与滩地单元为示意简化几何，时序数据为按水文规律模拟生成，不作为任何决策依据。',
+  disclaimer: realWater
+    ? '本数据集为演示用途：水域面与岸线取自 OpenStreetMap 真实水系（ODbL 1.0），滩地淹没单元仍为示意几何，时序数据为按水文规律模拟生成，不作为任何决策依据。'
+    : '本数据集为演示用途：水域面、岸线与滩地单元均为示意简化几何，时序数据为按水文规律模拟生成，不作为任何决策依据。',
+  spatialSources: {
+    water: realWater
+      ? 'OpenStreetMap 水系（natural=water + water=river），WGS-84，ODbL 1.0'
+      : '示意简化几何（中心线按河宽偏移）',
+    shoreline: realWater ? '由 OSM 水域面按中心线拆分左右岸' : '示意简化几何',
+    floodBands: '示意单元：沿真实岸线向外分带（内圈贴岸），高程为演示取值'
+  },
   elevationDatum: {
     analysis: '吴淞高程（站点水位、滩地高程、警戒水位均采用此基准）',
     render: '三维渲染时按固定偏移量转换为场景高程，见 src/config/scene.js 的 DATUM_OFFSET_M'
@@ -588,8 +1072,8 @@ writeJson('meta.json', {
     grade: { unit: '类', name: '水质类别' }
   },
   featureCounts: {
-    water: 1,
-    shoreline: 2,
+    water: waterFeatures.length,
+    shoreline: shorelineFeatures.length,
     floodBands: floodFeatures.length,
     stations: stations.length,
     bridges: bridges ? bridges.length : 0,
@@ -598,5 +1082,13 @@ writeJson('meta.json', {
 })
 
 const bandArea = floodFeatures.reduce((acc, f) => acc + f.properties.area_km2, 0)
-console.log(`\n完成。滩地单元合计面积 ${bandArea.toFixed(1)} km²，时间序列 ${STEP_HOURS} 小时 × ${stations.length} 个站点。`)
-console.log('提示：水域面与滩地为示意简化几何，可通过替换 OSM / 天地图水系数据提升精度。')
+const waterArea = waterFeatures.reduce((acc, f) => acc + (f.properties.area_km2 ?? 0), 0)
+console.log(
+  `\n完成。水域面 ${waterFeatures.length} 个（合计 ${waterArea.toFixed(1)} km²）、岸线 ${shorelineFeatures.length} 条、` +
+    `滩地单元 ${floodFeatures.length} 个（合计 ${bandArea.toFixed(1)} km²），时间序列 ${STEP_HOURS} 小时 × ${stations.length} 个站点。`
+)
+console.log(
+  realWater
+    ? '数据来源：水域面与岸线为 OpenStreetMap 真实水系（ODbL 1.0），滩地单元仍为示意几何。'
+    : '提示：当前为示意几何，执行 pnpm fetch:water 可取真实水系替换。'
+)

@@ -8,7 +8,11 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "build:data": "node scripts/build-data.mjs"
+    "build:data": "node scripts/build-data.mjs",
+    "fetch:water": "node scripts/fetch-water-osm.mjs",
+    "verify:gcj02": "node scripts/verify-gcj02.mjs",
+    "verify:data": "node scripts/verify-data.mjs",
+    "verify:camera": "node scripts/verify-camera.mjs"
   },
   "dependencies": {
     "cesium": "1.97.0",

@@ -86,7 +86,8 @@ function jumpPeak() {
   display: flex;
   align-items: center;
   gap: 16px;
-  width: min(920px, calc(100% - 660px));
+  /* 两侧给左右面板各留 350px，面板可以一直延伸到时间轴所在高度而不重叠 */
+  width: min(920px, calc(100% - 700px));
   padding: 8px 14px;
   transform: translateX(-50%);
 }

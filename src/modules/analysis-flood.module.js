@@ -10,6 +10,10 @@ import { watch } from 'vue'
  *   淹没面积 = 被淹没单元面积之和（面积在数据生成阶段按球面多边形真实计算）。
  * 水位来自全局唯一真值 effectiveWaterLevel，因此它与三维水面、站点数据完全同步：
  * 拖时间轴就是洪水演进，拖水位滑块就是设定情景。
+ *
+ * 数据形态：真实水系下，一个单元沿长江被分成若干河段，
+ *   几何是 MultiPolygon（每段一个环），渲染时一段一个实体 ——
+ *   这样既不会跨河段连线，单元数与统计口径也保持"高程类别 × 岸别"。
  */
 export default defineModule({
   id: 'analysis-flood',
@@ -45,26 +49,33 @@ export default defineModule({
     }
 
     ;(data.floodBands ?? []).forEach((feature) => {
-      const ring = feature.geometry?.coordinates?.[0]
-      if (!ring?.length) return
-      const entity = viewer.entities.add({
-        id: 'flood-' + feature.properties.id,
-        name: feature.properties.name + '（' + feature.properties.bank + '）',
-        polygon: {
-          hierarchy: new Cesium.PolygonHierarchy(
-            Cesium.Cartesian3.fromDegreesArray(ring.flatMap(([lng, lat]) => [lng, lat]))
-          ),
-          heightReference: Cesium.HeightReference.CLAMP_TO_GROUND,
-          material: new Cesium.ColorMaterialProperty(
-            new Cesium.CallbackProperty(() => fillOf(feature), false)
-          ),
-          outline: true,
-          outlineColor: new Cesium.CallbackProperty(() => outlineOf(feature), false)
-        }
+      const geometry = feature.geometry
+      const rings =
+        geometry?.type === 'MultiPolygon'
+          ? geometry.coordinates.map((polygon) => polygon[0])
+          : [geometry?.coordinates?.[0]]
+
+      rings.forEach((ring, index) => {
+        if (!ring?.length) return
+        const entity = viewer.entities.add({
+          id: index === 0 ? 'flood-' + feature.properties.id : `flood-${feature.properties.id}-${index}`,
+          name: feature.properties.name + '（' + feature.properties.bank + '）',
+          polygon: {
+            hierarchy: new Cesium.PolygonHierarchy(
+              Cesium.Cartesian3.fromDegreesArray(ring.flatMap(([lng, lat]) => [lng, lat]))
+            ),
+            heightReference: Cesium.HeightReference.CLAMP_TO_GROUND,
+            material: new Cesium.ColorMaterialProperty(
+              new Cesium.CallbackProperty(() => fillOf(feature), false)
+            ),
+            outline: true,
+            outlineColor: new Cesium.CallbackProperty(() => outlineOf(feature), false)
+          }
+        })
+        entity.show = false
+        entity.__meta = { kind: 'floodBand', feature }
+        createdIds.push(entity.id)
       })
-      entity.show = false
-      entity.__meta = { kind: 'floodBand', feature }
-      createdIds.push(entity.id)
     })
 
     function computeResult() {
@@ -117,15 +128,17 @@ export default defineModule({
         })
       },
       getResult: computeResult,
-      stopWatch: () => stopWatch()
+      stopWatch: () => stopWatch(),
+      getEntityIds: () => [...createdIds]
     }
   },
   destroy(ctx, api) {
     api?.stopWatch?.()
     const viewer = ctx.viewer
     if (!viewer) return
-    ;(ctx.data.floodBands ?? []).forEach((feature) => {
-      const entity = viewer.entities.getById('flood-' + feature.properties.id)
+    // MultiPolygon 的滩地单元一段一个实体，必须按实际创建的 id 逐个移除
+    ;(api?.getEntityIds?.() ?? []).forEach((id) => {
+      const entity = viewer.entities.getById(id)
       if (entity) viewer.entities.remove(entity)
     })
   }

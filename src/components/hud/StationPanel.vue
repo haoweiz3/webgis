@@ -26,7 +26,10 @@
               {{ station.properties.categoryName }} · {{ station.properties.district }}
             </div>
           </div>
-          <button class="btn" @click="locate">定位</button>
+          <div class="station-head__actions">
+            <button class="btn" @click="backToList">← 返回列表</button>
+            <button class="btn" @click="locate">定位</button>
+          </div>
         </div>
 
         <div class="field">
@@ -68,9 +71,11 @@ import { useTimeStore } from '@/stores/time.js'
 import { getViewer } from '@/core/viewerHolder.js'
 import { flyTo } from '@/core/cesium/camera.js'
 import { THEMATIC_FIELDS, STATION_STYLE, WATER_LEVEL } from '@/config/scene.js'
+import { useNavStore } from '@/stores/nav.js'
 
 const data = useDataStore()
 const time = useTimeStore()
+const nav = useNavStore()
 
 const chartRef = ref(null)
 let chart = null
@@ -283,6 +288,11 @@ function select(item) {
   data.selectStation(item.properties.id)
 }
 
+/** 返回站点列表：清空选择并记入导航历史，之后可用"前进"回到该站点 */
+function backToList() {
+  nav.backToList()
+}
+
 function locate() {
   const coords = station.value?.geometry?.coordinates
   if (coords) flyTo(getViewer(), { lng: coords[0], lat: coords[1], height: 3200, pitch: -50 })
@@ -299,12 +309,26 @@ watch([station, () => data.field, () => time.index], render, { immediate: true }
 .panel {
   display: flex;
   flex-direction: column;
+  /* 占满右栏剩余高度，站点列表在内部滚动而不是被裁掉 */
+  flex: 1 1 auto;
   min-height: 0;
+}
+
+.panel__body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
 }
 
 .panel__hint {
   color: var(--c-muted);
   font-size: 12px;
+}
+
+.station-head__actions {
+  display: flex;
+  flex-shrink: 0;
+  gap: 6px;
 }
 
 .station-head {
@@ -330,6 +354,13 @@ watch([station, () => data.field, () => time.index], render, { immediate: true }
   width: 100%;
   height: 172px;
   margin-top: 6px;
+}
+
+/* 视口高度受限时压低图表，把空间让给站点列表与读数 */
+@media (max-height: 780px) {
+  .chart {
+    height: 138px;
+  }
 }
 
 .hint {

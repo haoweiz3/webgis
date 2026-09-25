@@ -33,7 +33,18 @@ function close() {
 
 <style scoped>
 .info-card {
+  display: flex;
+  flex-direction: column;
+  /* 属性卡按内容自适应，长简介在内部滚动，不挤占站点面板 */
   flex-shrink: 0;
+  max-height: 42%;
+  min-height: 0;
+}
+
+.info-card .panel__body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
 }
 
 .info-card__name {

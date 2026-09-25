@@ -41,3 +41,6 @@ coverage/
 *.bak
 *.swp
 *~
+
+# ---------- 数据抓取缓存（可由 pnpm fetch:water 重新生成，不必入库） ----------
+scripts/data-src/raw-osm-water.json
