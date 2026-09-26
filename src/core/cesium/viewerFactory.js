@@ -42,11 +42,18 @@ export function createViewer(container) {
   scene.globe.baseColor = Cesium.Color.fromCssColorString(SCENE_DEFAULTS.globeBaseColor)
   // 关键设置：让地形能够遮挡实体，否则水面会盖住两岸
   scene.globe.depthTestAgainstTerrain = true
+  // 屏幕误差阈值：调小 → 同视距请求更高层级瓦片、更密地形网格（更清晰）
+  scene.globe.maximumScreenSpaceError = SCENE_DEFAULTS.globeMaximumScreenSpaceError
   scene.skyAtmosphere.brightnessShift = SCENE_DEFAULTS.atmosphereBrightnessShift
   scene.fog.density = SCENE_DEFAULTS.fogDensity
   scene.highDynamicRange = true
   scene.screenSpaceCameraController.minimumZoomDistance = 150
   scene.screenSpaceCameraController.maximumZoomDistance = 800000
+
+  // 按屏幕物理像素渲染：Cesium 默认忽略 devicePixelRatio，高分屏上底图会发软
+  viewer.useBrowserRecommendedResolution = SCENE_DEFAULTS.useBrowserRecommendedResolution
+  const devicePixelRatio = window.devicePixelRatio || 1
+  viewer.resolutionScale = Math.min(1, SCENE_DEFAULTS.maxRenderPixelRatio / devicePixelRatio)
 
   // 双击默认会锁定实体，演示时容易误操作，移除该行为
   viewer.cesiumWidget.screenSpaceEventHandler.removeInputAction(

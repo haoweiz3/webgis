@@ -2,7 +2,7 @@
 
 > **本文件是本项目的长期上下文，供同一项目下的所有任务 / 会话 / Agent 接手前阅读。**
 > 动手改代码之前，先读第 2 节（硬性约束）与第 5 节（架构规范）。
-> 最后更新：2026-09-25　｜　项目根目录：`D:\学习\XZD\webgis`
+> 最后更新：2026-09-26　｜　项目根目录：`D:\学习\XZD\webgis`
 > （Windows 文件系统不区分大小写，`agent.md` 与 `AGENTS.md` 是同一个文件。）
 
 ---
@@ -22,7 +22,7 @@
 1. **不涉及水工结构内容**：不出现坝体、坝段、表孔、深孔、消能、机组等水利工程术语，也不做这类模型。界面与文档统一使用 GIS 词汇（图层、要素、属性、高程、量算、剖面、专题图、时空数据）。例外：**水位、淹没、库容**这几个概念允许出现，它们同时是空间分析对象。
 2. **技术栈锁定**：Vue3 + Vite + **原生 JavaScript（不引入 TypeScript）** + Cesium 1.97 + ECharts + Pinia + Sass。
 3. **不引入 UI 组件库**（不用 Element Plus / Ant Design Vue）。HUD 面板、按钮、滑杆全部自绘，这是展示 HTML/CSS 能力的一部分。
-4. **不依赖付费或需备案的服务**：底图默认高德（无需 key），可选天地图（`VITE_TIANDITU_KEY`，免费申请），地形用 ArcGIS 全球地形（无需 key）。**不使用 Cesium ion 令牌**（`imageryProvider: false`）。
+4. **不依赖付费或需备案的服务**：底图默认高德（无需 key），可选 Esri 全球影像（`server.arcgisonline.com`，无需 key，WGS-84 口径不纠偏）与天地图（`VITE_TIANDITU_KEY`，免费申请），地形用 ArcGIS 全球地形（无需 key）。**不使用 Cesium ion 令牌**（`imageryProvider: false`）。
 5. **数据必须是可解释的演示数据**：所有空间与时序数据都要在 README 与界面中标注"演示数据，不作为决策依据"。
 6. **不破坏模块契约**：任何新功能必须是实现了 `init(ctx)` / `destroy()` 的模块，不允许在 App.vue 或组件里直接堆 Cesium 代码。
 7. **代码注释、界面文案、文档一律中文**（代码标识符用英文）。
@@ -117,6 +117,7 @@ export default defineModule({
 - 水位、滩地单元高程、警戒水位统一采用**吴淞高程**，所有分析与阈值判定都在该基准下完成；
 - 仅在三维渲染时按 `src/config/scene.js` 的 `DATUM_OFFSET_M`（演示取值 −8.0 m）换算成场景高程；
 - 剖面曲线取自地形服务（近似 EGM96 口径），要与水位数据直接比较时必须先做基准转换 —— 这一点在文档与界面里都做了说明，不要"顺手"把两者混算。
+- **地形服务是好的，但这份全球 DEM 在武汉段几乎没有起伏**：ArcGIS 全球地形（Terrain3D）实测——跨龟山 2 km 断面、20 m 间距的 101 个点高程全部为 24.8 m（高差 0.0 m），汉口向西北 20 km 也完全同值；真实世界里的龟山（约 90 m）、蛇山、珞珈山与长江河道下切都被这份粗格网抹平了，**放大也看不出来**。服务本身正确（实测拉萨 4959.9 m、神农架 1223.5 m、木兰山 286.3 m）。所以研究区剖面是水平线属于数据口径事实，不要当 bug"修"；要展示地形能力，就把剖面线放到研究区外围，或换更高分辨率 DEM（30 m 级 Copernicus / ALOS，或自实现基于 AWS terrarium 高度瓦片的 TerrainProvider）。
 
 ### 5.6 坐标系统一（底图纠偏）
 
@@ -158,7 +159,7 @@ export default defineModule({
 | `stations.geojson` | 24 个站点：水位站 8、水质站 7、雨量站 9 | 真实站点名称与河段位置，警戒水位参考公开资料（汉口 27.30 m 吴淞）；水位站/水质断面由真实锚点投到水面边界（`anchor` 字段随数据发布） |
 | `bridges.geojson` | 4 座跨江大桥 | 真实坐标与公开简介 |
 | `roads-main.geojson` | 800 条主干道（约 443 KB） | 从本地路网筛选国道/省道/快速路并抽稀 |
-| `series.json` | 96 小时逐小时序列（24 站点） | **模拟数据**：雨峰 → 涨水 → 洪峰 → 退水；汉口洪峰 28.40 m，超警戒 18 小时，流量峰值约 6.5 万 m³/s |
+| `series.json` | 96 小时逐小时序列（24 站点：水位站 8 + 水质站 7 + 雨量站 9） | **模拟数据**：面雨量峰值 9.1 mm/h、累计 186 mm（单站累计 162~313 mm）→ 涨水 → 洪峰 → 退水；汉口洪峰 28.39 m（超警戒 18 小时）、流量峰值约 6.5 万 m³/s；洪峰自上游向下游滞后 0~5 小时 |
 | `meta.json` | 数据说明、口径、要素计数 | — |
 
 数据源默认路径 `D:/学习/XZD/Part3/smart-city-wuhan/src/assets`（`Wuhan_bridge.json`、`Wuhan_roads.json`），可用 `SOURCE_DATA_DIR` 覆盖；源文件缺失时脚本会跳过对应文件并提示。
@@ -170,6 +171,8 @@ export default defineModule({
 1. **不要用 OSM 的 `waterway=river` 折线当中心线**：它在汊道与分汇流处分叉，拼起来会横跳 20 km，据此外扩的滩地会挂到几百米外的陆地上；正确做法是逐段由两岸配对生成中心线。
 2. **不要跨河段拼岸线再外扩**：河段之间有断口，拼接后的环会自己绕回去（实测每环 8~35 处自交）；正确做法是逐段成环、用 MultiPolygon 表达，外圈再跑一次 `removeReversals()` 去回折（单环自交降到 ≤ 4 处）。
 3. **站点不要按"里程比例 t"定位**：中心线点会因落在陆地/江心洲被剔除，按数组下标或里程插值都会把站点整体推向上游（实测武汉关水位站偏 20 km）。现在每个站带真实锚点 `at`，生成时投到该河水面边界上；锚点本身也要按真实水系核对，手写控制点可能偏几公里（白浒山就偏了 8 km）。
+4. **水位序列的涨水幅度与洪峰滞后必须显式给**：`amp`（米）与 `lag`（小时）写在 `WATER_LEVEL_STATIONS` 的站点定义里。曾经用里程比例 `s.t` 推算（`amplitude = 5.2 - s.t * 1.2`），站点改用真实锚点 `at` 后该字段消失，`NaN` 被 `JSON.stringify` 序列化成 `null`，导致**时间轴驱动水位这条主线静默失效**：水面固定在默认值 24.5 m、淹没分析不随水位变化、水位站永不变红、数值标注空白、水位过程线空图、洪峰按钮跳回第 0 帧。改完序列生成逻辑必须扫一遍 `series.json` 有没有 `null`。
+5. **降雨量级集中在 `RAIN_SCALE`**：96 小时面雨量标定到约 186 mm、峰值 9.1 mm/h（武汉一次区域性暴雨）。标定前累计 668 mm、峰值 35 mm/h，接近年均降水（约 1300 mm）的一半，量级失真。
 
 ---
 
@@ -183,6 +186,7 @@ export default defineModule({
 - 球面面积公式校核（赤道 0.01° 方格：1.0653 km² vs 平面近似 1.0677 km²，偏差 0.23%）；
 - 高德底图 GCJ-02 纠偏已实现并用 `pnpm verify:gcj02` 校核（互转往返误差 1e-8 m 量级；瓦片索引与高德网格完全一致；各层级贴图残差 < 0.5 px，相邻瓦片不留缝）；
 - 真实水系已接入（`pnpm fetch:water` 从 OSM 取数，`water.geojson` 为 FeatureCollection 含江心洲内环，`flood-bands.geojson` 为 MultiPolygon）；`pnpm verify:data` 全部通过：水域面 15 个 / 306 km²、岸线 33 条、滩地内圈与真实岸线距离 0 m、8 个水位站全部落在水面内、武汉长江大桥主跨两端点回到岸边（此前被示意河道覆盖 138~172 m）；
+- 时序数据已修复并标定：水位/流量序列此前因 `s.t` 字段消失而全为 `null`（时间轴不驱动水位），现改为每站显式 `amp` / `lag` —— 8 个水位站峰值 27.63~29.72 m、全部超警戒 16~32 小时、流量峰值 5.6~8.2 万 m³/s，洪峰自上游向下游滞后 0~5 小时；汉口过程 23.93 m（起点）→ 28.39 m（洪峰，第 54 小时）→ 24.09 m（末帧），对应淹没面积 0 → 376 → 85 km²，时间轴驱动重新生效；降雨按 `RAIN_SCALE = 0.27` 标定；
 - 文档：`README.md`、`docs/简历项目条目.md`、`docs/录屏讲解脚本.md`、`docs/面试高频追问与参考答案.md`。
 
 已知问题与未验证项：
@@ -234,6 +238,7 @@ export default defineModule({
 - HUD 骨架尺寸集中在 `main.scss` 的 `--hud-top / --hud-bottom / --col-left / --col-right` 变量里（小屏由媒体查询收紧）；**栏内每个面板都必须有高度预算**（`flex` + `min-height: 0`，内容区自己 `overflow-y: auto`），否则内容一多就会被栏的 `overflow: hidden` 裁掉且滚不动。
 - HUD 的"返回 / 前进"由 `src/stores/nav.js` 统一记录：它保存的是「选中的站点 + 打开的要素属性卡」组合快照，记录动作集中在 `App.vue` 对数据状态的一个 `flush: 'sync'` 监听里。新增可选中、可打开的面板交互时，只要走 `data.selectStation / data.selectFeature`，就自动获得返回/前进能力，不要各自维护一套历史。
 - 相机飞行统一走 `src/core/cesium/camera.js` 的 `flyTo()`，内部是 `camera.flyToBoundingSphere` + `HeadingPitchRange`：**不要用 `camera.flyTo({ destination: 目标点 })`**，那会把目标点当相机位置，带俯仰角时屏幕中心偏出「高度 / tan|俯仰角|」（3200 m / -50° 偏 2.7 km，初始视角偏 29 km）。新增视角（书签、定位、快捷视图）都复用 `flyTo()`。
+- 底图清晰度相关的参数集中在 `src/config/scene.js` 的 `SCENE_DEFAULTS`：`useBrowserRecommendedResolution`（必须为 false，否则高分屏按 CSS 像素渲染、底图发软）、`maxRenderPixelRatio`、`globeMaximumScreenSpaceError`（默认调为 1.5）。新增底图时注意：`kind: 'amap'` 才挂 `gcj02TilingScheme()`，Esri / 天地图 / ArcGIS 都是 WGS-84 口径，**不要**纠偏（Esri 影像用 `server.arcgisonline.com`，`services.arcgisonline.com` 在部分网络下不可达）。
 - ECharts 容器若在 `v-if` 内，必须"按需初始化"（等 DOM 出现后再 `echarts.init`），并在卸载时 `dispose`。
 - 改完及时同步文档：功能变化更新 `README.md`，工作内容变化更新 `docs/简历项目条目.md`，演示流程变化更新 `docs/录屏讲解脚本.md`。
 - 需要联网的操作（安装依赖、下载数据）在本机执行前先确认网络可用；沙箱内需申请授权。

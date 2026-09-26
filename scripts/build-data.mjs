@@ -740,14 +740,14 @@ for (const band of FLOOD_BANDS) {
 /* ------------------------------------------------------------------ */
 
 const WATER_LEVEL_STATIONS = [
-  { id: 'WL01', name: '纱帽水位站', at: [114.032, 30.272], base: 24.6, warn: 26.80, district: '汉南区' },
-  { id: 'WL02', name: '沌口水位站', at: [114.152, 30.383], base: 24.4, warn: 26.90, district: '蔡甸区' },
-  { id: 'WL03', name: '金口水位站', at: [114.1, 30.3], base: 24.2, warn: 26.90, district: '江夏区' },
-  { id: 'WL04', name: '白沙洲水位站', at: [114.2315, 30.4932], base: 24.1, warn: 27.00, district: '洪山区' },
-  { id: 'WL05', name: '汉阳水位站', at: [114.2774, 30.5337], base: 24.0, warn: 27.10, district: '汉阳区' },
-  { id: 'WL06', name: '汉口（武汉关）水位站', at: [114.286, 30.571], base: 23.9, warn: 27.30, district: '江汉区' },
-  { id: 'WL07', name: '天兴洲水位站', at: [114.39, 30.652], base: 23.7, warn: 27.00, district: '青山（化工）区' },
-  { id: 'WL08', name: '阳逻水位站', at: [114.55, 30.682], base: 23.5, warn: 26.80, district: '新洲区' }
+  { id: 'WL01', name: '纱帽水位站', at: [114.032, 30.272], base: 24.6, warn: 26.80, amp: 5.1, lag: 0, district: '汉南区' },
+  { id: 'WL02', name: '沌口水位站', at: [114.152, 30.383], base: 24.4, warn: 26.90, amp: 5.0, lag: 1, district: '蔡甸区' },
+  { id: 'WL03', name: '金口水位站', at: [114.1, 30.3], base: 24.2, warn: 26.90, amp: 4.8, lag: 1, district: '江夏区' },
+  { id: 'WL04', name: '白沙洲水位站', at: [114.2315, 30.4932], base: 24.1, warn: 27.00, amp: 4.7, lag: 2, district: '洪山区' },
+  { id: 'WL05', name: '汉阳水位站', at: [114.2774, 30.5337], base: 24.0, warn: 27.10, amp: 4.6, lag: 2, district: '汉阳区' },
+  { id: 'WL06', name: '汉口（武汉关）水位站', at: [114.286, 30.571], base: 23.9, warn: 27.30, amp: 4.5, lag: 3, district: '江汉区' },
+  { id: 'WL07', name: '天兴洲水位站', at: [114.39, 30.652], base: 23.7, warn: 27.00, amp: 4.35, lag: 4, district: '青山（化工）区' },
+  { id: 'WL08', name: '阳逻水位站', at: [114.55, 30.682], base: 23.5, warn: 26.80, amp: 4.1, lag: 5, district: '新洲区' }
 ]
 
 /**
@@ -855,6 +855,13 @@ function makeRandom(seed) {
   }
 }
 
+/**
+ * 降雨量级标定
+ * 96 小时面雨量累计标定到 180 mm 左右、雨峰约 9 mm/h，相当于武汉一次区域性暴雨过程。
+ * 标定前累计达 668 mm、雨峰 35 mm/h，接近年均降水量（约 1300 mm）的一半且强度明显失真。
+ */
+const RAIN_SCALE = 0.27
+
 /** 降雨过程：主雨峰在第 30~44 小时 */
 function rainAt(hour, rand) {
   const peaks = [
@@ -864,8 +871,9 @@ function rainAt(hour, rand) {
   ]
   let v = 0
   for (const p of peaks) v += p.amp * Math.exp(-((hour - p.center) ** 2) / (2 * p.width ** 2))
-  v *= 0.9 + rand() * 0.2
-  return v < 0.2 ? 0 : Number(v.toFixed(1))
+  v *= (0.9 + rand() * 0.2) * RAIN_SCALE
+  // 0.1 mm 为雨量计分辨率，小于该值记为无降水
+  return v < 0.1 ? 0 : Number(v.toFixed(1))
 }
 
 const timestamps = []
@@ -905,8 +913,10 @@ const stationSeries = {}
 
 for (const s of WATER_LEVEL_STATIONS) {
   const rand = makeRandom(s.id.charCodeAt(2) + 11)
-  const lag = Math.round((0.07 - s.t) * 6) // 上游略早、下游略晚
-  const amplitude = 5.2 - s.t * 1.2
+  // 洪水传播：上游先涨、下游后涨，本河段洪峰传播时间约 0~5 小时（lag = 下游滞后小时数）
+  const lag = s.lag ?? 0
+  // 涨水幅度（米）：上游受顶托与回水影响更大，逐站递减；洪峰高程 = base + amp
+  const amplitude = s.amp ?? 4.5
   const level = []
   const flow = []
   for (let i = 0; i < STEP_HOURS; i++) {
@@ -939,8 +949,9 @@ for (const s of WATER_QUALITY_STATIONS) {
 
 for (const s of RAIN_STATIONS) {
   const rand = makeRandom(s.id.charCodeAt(2) + 37)
-  const scale = 0.65 + ((s.lng - 114.0) * 1.4 + (s.lat - 30.5) * 1.1)
-  const rain = basinRain.map((v) => Number((v * Math.max(0.35, scale) + rand() * 0.6).toFixed(1)))
+  // 单站雨量在面雨量基础上按位置加权（城区偏多、远郊偏少），夹到合理区间
+  const scale = Math.min(1.6, Math.max(0.6, 0.65 + ((s.lng - 114.0) * 1.4 + (s.lat - 30.5) * 1.1)))
+  const rain = basinRain.map((v) => Number((v * scale + rand() * 0.3).toFixed(1)))
   stationSeries[s.id] = { rain, cumulative: cumulative(rain) }
 }
 

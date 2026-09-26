@@ -13,7 +13,19 @@ export const DATUM_OFFSET_M = -8.0
 export const SCENE_DEFAULTS = {
   globeBaseColor: '#0b1622',
   atmosphereBrightnessShift: -0.12,
-  fogDensity: 0.00012
+  fogDensity: 0.00012,
+  /**
+   * 渲染清晰度
+   * useBrowserRecommendedResolution=false：按屏幕物理像素渲染。
+   *   Cesium 默认忽略 devicePixelRatio（用 CSS 像素渲染），在 125%~200%
+   *   缩放的笔记本屏上画面会被放大，底图看着发软。
+   * maxRenderPixelRatio：物理像素放大上限，4K/Retina 下兼顾清晰度与帧率。
+   * globeMaximumScreenSpaceError：地形与影像的屏幕误差阈值，默认 2；
+   *   调小会让同一视距请求更高层级（更清晰）的瓦片与更密的地形网格。
+   */
+  useBrowserRecommendedResolution: false,
+  maxRenderPixelRatio: 2,
+  globeMaximumScreenSpaceError: 1.5
 }
 
 /** 研究区范围（长江武汉段） */
@@ -80,6 +92,16 @@ export const BASE_MAPS = [
     subdomains: ['0', '1', '2', '3', '4', '5', '6', '7'],
     maximumLevel: 18,
     credit: '天地图'
+  },
+  {
+    // 无需 key，和项目已用的 ArcGIS 地形同一个服务商；WGS-84 口径，不需要纠偏。
+    // 城市区影像通常比高德影像更细（高德影像最高 18 级，这里到 19 级）。
+    id: 'esri-img',
+    name: 'Esri 影像',
+    kind: 'esri',
+    url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+    maximumLevel: 19,
+    credit: 'Esri World Imagery'
   }
 ]
 
