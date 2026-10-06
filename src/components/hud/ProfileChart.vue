@@ -13,8 +13,7 @@
       </div>
       <div ref="chartRef" class="profile__chart"></div>
       <p class="hint">
-        高程取自地形服务（近似 EGM96 口径）。若需与吴淞高程的水位数据直接比较，
-        应先完成高程基准转换，再判定淹没关系。
+        {{ datumHint }}
       </p>
     </div>
   </section>
@@ -23,8 +22,23 @@
 <script setup>
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import * as echarts from 'echarts'
-import { getContext } from '@/core/platform/contextHolder.js'
+import { getContext, onContextReady } from '@/core/platform/contextHolder.js'
 import { EVENTS } from '@/core/events/eventBus.js'
+import { useSceneStore } from '@/stores/scene.js'
+
+const scene = useSceneStore()
+
+const DATUM_HINT = {
+  'local-dem': '高程取自本地 FABDEM 地形（EGM2008 口径，去建筑与树冠）。要与吴淞高程的水位数据直接比较，应先完成高程基准转换，再判定淹没关系。',
+  'arcgis-online': '高程取自 ArcGIS 全球地形（近似 EGM96 口径），研究区内的起伏被粗格网抹平。要与吴淞高程的水位数据直接比较，应先完成高程基准转换，再判定淹没关系。',
+  ellipsoid: '当前未启用三维地形，曲线是椭球高（近似海平面），不代表真实地面。'
+}
+
+const datumHint = computed(() => {
+  const base = DATUM_HINT[scene.terrainSource] ?? DATUM_HINT.ellipsoid
+  const factor = scene.terrainExaggeration
+  return factor > 1 ? `${base}（三维场景按 ×${factor} 垂直夸张显示，曲线数值仍是真实高程。）` : base
+})
 
 const profile = ref(null)
 const chartRef = ref(null)
@@ -124,17 +138,29 @@ function close() {
   getContext()?.eventBus.emit(EVENTS.ANALYSIS_CLEARED, { type: 'profile' })
 }
 
+let offContext = null
+let offCleared = null
+
 onMounted(() => {
-  off = getContext()?.eventBus.on(EVENTS.ANALYSIS_RESULT, (result) => {
-    if (result.type === 'profile') {
-      profile.value = result
-      requestAnimationFrame(render)
-    }
+  // 上下文在 App 异步初始化里才创建，这里必须等它就绪再订阅，否则收不到结果
+  offContext = onContextReady((ctx) => {
+    off = ctx.eventBus.on(EVENTS.ANALYSIS_RESULT, (result) => {
+      if (result.type === 'profile') {
+        profile.value = result
+        requestAnimationFrame(render)
+      }
+    })
+    // 「清除结果」会停掉剖面工具，此时面板也要跟着收起，否则会一直挡着场景
+    offCleared = ctx.eventBus.on(EVENTS.ANALYSIS_CLEARED, (payload) => {
+      if (!payload?.type || payload.type === 'profile') profile.value = null
+    })
   })
 })
 
 onBeforeUnmount(() => {
   off?.()
+  offCleared?.()
+  offContext?.()
   disposeChart()
 })
 

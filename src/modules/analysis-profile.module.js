@@ -73,7 +73,8 @@ export default defineModule({
           ctx.terrainProvider,
           points[0],
           points[1],
-          90
+          90,
+          ctx.localTerrainSampler
         )
         const length = geo.lineLength(points)
         ctx.eventBus.emit(EVENTS.ANALYSIS_RESULT, {

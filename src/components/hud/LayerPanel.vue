@@ -24,17 +24,6 @@
       </div>
 
       <div class="block">
-        <label class="check">
-          <input
-            type="checkbox"
-            :checked="scene.terrainEnabled"
-            @change="toggleTerrain($event.target.checked)"
-          />
-          三维地形起伏
-        </label>
-      </div>
-
-      <div class="block">
         <div class="block__label">空间与时空数据</div>
         <template v-for="group in groupedLayers" :key="group.name">
           <div class="group__name">{{ group.name }}</div>
@@ -46,6 +35,16 @@
             />
             {{ layer.name }}
           </label>
+          <!-- 地形组多一条高程分级图例：让"地形起伏"这一层的配色有据可读 -->
+          <template v-if="group.name === '地形'">
+            <div class="tint" title="地形高程分级设色（EGM2008）">
+              <span v-for="item in tintClasses" :key="item.label" class="tint__item">
+                <i class="tint__swatch" :style="{ background: item.css }"></i>
+                {{ item.label }}
+              </span>
+            </div>
+            <p class="hint">三维按 ×3 垂直夸张显示；配色与夸大只作用于显示，剖面与淹没数值仍为真实高程</p>
+          </template>
         </template>
       </div>
 
@@ -67,10 +66,16 @@ import { useSceneStore } from '@/stores/scene.js'
 import { getRegistry } from '@/core/platform/registryHolder.js'
 import { getViewer } from '@/core/viewerHolder.js'
 import { flyTo } from '@/core/cesium/camera.js'
-import { BOOKMARKS, LAYER_GROUPS } from '@/config/scene.js'
+import { BOOKMARKS, LAYER_GROUPS, TERRAIN_TINT } from '@/config/scene.js'
 
 const scene = useSceneStore()
 const bookmarks = BOOKMARKS
+
+/** 高程分级图例：直接用配置里的分级配色，保证与三维里的着色一致 */
+const tintClasses = TERRAIN_TINT.classes.map((item) => ({
+  label: item.label,
+  css: `rgb(${item.color.join(',')})`
+}))
 
 const totalLayers = computed(() => scene.layers.length)
 
@@ -83,10 +88,6 @@ const groupedLayers = computed(() =>
 
 function switchBaseMap(id) {
   getRegistry()?.get('basemap')?.setBaseMap(id)
-}
-
-function toggleTerrain(enabled) {
-  getRegistry()?.get('terrain')?.setEnabled(enabled)
 }
 
 function toggleLayer(layerId, visible) {
@@ -151,5 +152,29 @@ function fly(bookmark) {
   color: rgba(143, 180, 204, 0.7);
   font-size: 11px;
   line-height: 1.5;
+}
+
+/* 高程分层设色的图例条 */
+.tint {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 2px 8px;
+  margin-top: 8px;
+}
+
+.tint__item {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  color: rgba(143, 180, 204, 0.78);
+  font-size: 10px;
+  white-space: nowrap;
+}
+
+.tint__swatch {
+  flex: 0 0 auto;
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
 }
 </style>

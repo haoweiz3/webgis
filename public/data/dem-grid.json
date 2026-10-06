@@ -1,0 +1,37 @@
+{
+  "source": "FABDEM V1-2（去建筑与树冠，Copernicus DEM GLO-30 派生）",
+  "license": "FABDEM © University of Bristol，CC BY-NC-SA 4.0（非商用、需署名）",
+  "sourceTiles": [
+    "N30E113_FABDEM_V1-2.tif",
+    "N30E114_FABDEM_V1-2.tif"
+  ],
+  "generatedAt": "2026-09-28T17:34:23.235Z",
+  "verticalDatum": "随 Copernicus DEM（EGM2008 似大地水准面），使用前需与吴淞基准标定",
+  "grid": {
+    "west": 113.8,
+    "south": 30.14,
+    "cellDeg": 0.001,
+    "cols": 1000,
+    "rows": 720,
+    "cellMetersLng": 96,
+    "cellMetersLat": 111
+  },
+  "storage": {
+    "file": "dem-grid.bin",
+    "type": "Uint16 little-endian",
+    "scale": 10,
+    "unit": "0.1 m",
+    "rowOrder": "南→北，西→东"
+  },
+  "storageEncoding": {
+    "baseMeters": -3276.8,
+    "noDataValue": 0,
+    "note": "value = round(elev*10) + 32768"
+  },
+  "elevationRangeMeters": [
+    -5.8,
+    407.8
+  ],
+  "missingCells": 0,
+  "filledCells": 0
+}

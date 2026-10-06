@@ -16,6 +16,12 @@ export const useSceneStore = defineStore('scene', () => {
   const baseMapId = ref(BASE_MAPS[0].id)
   const hasTiandituKey = ref(false)
   const terrainEnabled = ref(true)
+  /** 当前生效的地形来源：local-dem | arcgis-online | ellipsoid */
+  const terrainSource = ref('ellipsoid')
+  /** 当前生效的垂直夸张倍数（仅视觉） */
+  const terrainExaggeration = ref(1)
+  /** 本地 DEM 的覆盖范围（度），越界处按边缘值延拓 */
+  const terrainCoverage = ref(null)
   const layers = ref([])
   const fps = ref(0)
   const cameraHeight = ref(0)
@@ -57,6 +63,9 @@ export const useSceneStore = defineStore('scene', () => {
     baseMapId,
     hasTiandituKey,
     terrainEnabled,
+    terrainSource,
+    terrainExaggeration,
+    terrainCoverage,
     layers,
     fps,
     cameraHeight,

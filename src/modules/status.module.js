@@ -1,5 +1,6 @@
 import * as Cesium from 'cesium'
 import { defineModule } from '../core/platform/defineModule.js'
+import { getTerrainExaggeration } from '../core/terrainState.js'
 
 /**
  * 场景状态模块
@@ -25,7 +26,8 @@ export default defineModule({
         return
       }
       const { lng, lat, height } = coord.toCartographicDegrees(carto)
-      scene.setCursor({ lng, lat, height })
+      // 地形可能被垂直夸张，读数要还原成真实地面高程再显示
+      scene.setCursor({ lng, lat, height: height / getTerrainExaggeration() })
     }, Cesium.ScreenSpaceEventType.MOUSE_MOVE)
 
     let lastSample = 0

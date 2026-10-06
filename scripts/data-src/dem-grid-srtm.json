@@ -1,0 +1,34 @@
+{
+  "source": "Terrain Tiles（Mapzen / AWS Open Data），SRTM 等 30 m 派生",
+  "license": "Terrain Tiles © Mapzen，数据源 SRTM 等（开放数据）",
+  "generatedAt": "2026-09-28T14:41:15.127Z",
+  "zoom": 12,
+  "verticalDatum": "EGM96 正高（米），需与吴淞基准做标定",
+  "grid": {
+    "west": 113.8,
+    "south": 30.14,
+    "cellDeg": 0.001,
+    "cols": 1000,
+    "rows": 720,
+    "cellMetersLng": 96,
+    "cellMetersLat": 111
+  },
+  "storage": {
+    "file": "dem-grid.bin",
+    "type": "Uint16 little-endian",
+    "scale": 10,
+    "unit": "0.1 m",
+    "rowOrder": "南→北，西→东"
+  },
+  "storageEncoding": {
+    "baseMeters": -3276.8,
+    "noDataValue": 0,
+    "note": "value = round(elev*10) + 32768"
+  },
+  "elevationRangeMeters": [
+    -97.6,
+    400.3
+  ],
+  "missingCells": 0,
+  "filledCells": 0
+}

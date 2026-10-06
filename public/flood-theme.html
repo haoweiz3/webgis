@@ -1,0 +1,164 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<title>长江武汉段 · 淹没主题图（演示数据）</title>
+<style>
+  body { margin:0; font:13px/1.6 'Microsoft YaHei',system-ui,sans-serif; background:#0d1117; color:#e6edf3; display:flex; }
+  #map { width:1000px; height:720px; flex:none; }
+  #side { padding:14px 16px; width:330px; }
+  h1 { font-size:15px; margin:0 0 10px; }
+  .row { margin:10px 0; }
+  .val { color:#4fd1ff; font-variant-numeric:tabular-nums; }
+  input[type=range] { width:100%; accent-color:#4fd1ff; }
+  .legend div { display:flex; align-items:center; gap:6px; margin:3px 0; }
+  .sw { width:14px; height:10px; border:1px solid #444; flex:none; }
+  .note { color:#8b949e; font-size:12px; margin-top:12px; }
+</style>
+</head>
+<body>
+<canvas id="map" width="1000" height="720"></canvas>
+<div id="side">
+  <h1>长江武汉段 · 淹没主题图</h1>
+  <div class="row">水位（吴淞）<b class="val" id="lvl">27.3 m</b><br />
+    较基准水面抬升 <b class="val" id="rise">+3.4 m</b></div>
+  <input type="range" id="slider" min="20" max="29.5" step="0.1" value="27.3" />
+  <div class="row">淹没面积 <b class="val" id="areaLower">--</b>（有堤，下界）<br />
+    淹没面积 <b class="val" id="areaUpper">--</b>（无堤，上界）<br />
+    最大水深 <b class="val" id="depth">--</b></div>
+  <div class="legend">
+    <div><span class="sw" style="background:#1a4f7a"></span>河道</div>
+    <div><span class="sw" style="background:#78c8eb"></span>淹没（浅水）→<span class="sw" style="background:#1e5a82"></span>深水</div>
+    <div><span class="sw" style="background:#e6d896"></span>低于水位但未连通（被堤挡住 or 孤立洼地）</div>
+    <div><span class="sw" style="background:#eb7814"></span>OSM 堤线</div>
+    <div><span class="sw" style="background:#c83c3c"></span>DEM 反演堤线</div>
+    <div><span class="sw" style="background:#5a5a5a"></span>现有示意单元边界</div>
+  </div>
+  <div class="note">滑块调的是<b>水位（吴淞）</b>，不是雨量；雨量通过时间轴驱动水位。
+    口径：FABDEM（去建筑）100 m 格网，吴淞 = DEM + 1.87 m（文献值 ±0.5 m）；
+    堤线＝OSM 416 条 + DEM 反演脊线，按"不可穿越屏障"处理，不模拟漫堤。
+    演示数据，不作为决策依据。</div>
+  <div class="note" id="selfcheck">自校核（固定水位，用来与分析脚本逐条对比）：计算中…</div>
+</div>
+<script type="module">
+const OFF = 1.87, COLORS = { water:[26,79,122], deep:[30,90,130], shallow:[120,200,235], dry:[230,216,150] }
+const meta = await (await fetch('/scripts/data-src/dem-grid.json')).json()
+const { cols, rows, west, south, cellDeg } = meta.grid
+const raw = new Uint16Array(await (await fetch('/scripts/data-src/dem-grid.bin')).arrayBuffer())
+const scale = meta.storage.scale, base = meta.storageEncoding.baseMeters
+const elev = new Float32Array(cols*rows)
+for (let i=0;i<elev.length;i++) elev[i] = raw[i]/scale + base
+const barrier = new Uint8Array(await (await fetch('/scripts/data-src/levees-dem.bin')).arrayBuffer())
+const ridge = new Uint8Array(await (await fetch('/scripts/data-src/levees-dem-raw.bin')).arrayBuffer())
+const river = await (await fetch('/scripts/data-src/yangtze-water.json')).json()
+const levees = await (await fetch('/scripts/data-src/levees-osm.json')).json()
+const bands = await (await fetch('/data/flood-bands.geojson')).json()
+
+/* 把 OSM 堤线栅格化进屏障（与分析脚本口径一致：OSM 堤线 ∪ DEM 反演脊线） */
+{
+  const toCell = ([lng,lat]) => [Math.round((lng-west)/cellDeg-0.5), Math.round((lat-south)/cellDeg-0.5)]
+  const mark = (r,c) => { for (const [dr,dc] of [[0,0],[0,1],[0,-1],[1,0],[-1,0]]) { const rr=r+dr, cc=c+dc
+    if (rr<0||rr>=rows||cc<0||cc>=cols) continue; barrier[rr*cols+cc]=1 } }
+  for (const el of levees.elements) { const g=el.geometry||[]; if (g.length<2) continue
+    for (let i=1;i<g.length;i++) { let [x0,y0]=toCell([g[i-1].lon,g[i-1].lat]); const [x1,y1]=toCell([g[i].lon,g[i].lat])
+      const steps=Math.max(Math.abs(x1-x0),Math.abs(y1-y0),1)
+      for (let k=0;k<=steps;k++) mark(y0+Math.round((y1-y0)*k/steps), x0+Math.round((x1-x0)*k/steps)) } }
+}
+
+/* 水域面栅格化（扫描线，奇偶规则） */
+const water = new Uint8Array(cols*rows)
+for (let row=0; row<rows; row++) {
+  const lat = south + (row+0.5)*cellDeg, xs = []
+  // 只把长江/汉江当河道种子：yangtze-water.json 里还含支流（举水、府河、滠水…），
+  // 全用上会让"水"从研究区到处冒出来，堤线形同虚设（曾导致 27.3 m 算出 5081 km²）
+  for (const r of river.rivers) { if (!/长江|汉江/.test(r.name)) continue
+    for (const p of r.polygons) for (const ring of [p.outer, ...p.holes])
+    for (let i=1;i<ring.length;i++) {
+      const [x1,y1]=ring[i-1], [x2,y2]=ring[i]
+      if ((y1>lat)!==(y2>lat)) xs.push(x1 + (lat-y1)*(x2-x1)/(y2-y1))
+    } }
+  xs.sort((a,b)=>a-b)
+  for (let i=1;i<xs.length;i+=2)
+    for (let c=Math.max(0,Math.ceil((xs[i-1]-west)/cellDeg-0.5)); c<=Math.min(cols-1,Math.floor((xs[i]-west)/cellDeg-0.5)); c++)
+      water[row*cols+c] = 1
+}
+/* 与分析脚本口径一致：陆域低于 5 m 的伪低值用 5×5 中值修复。
+   FABDEM 在部分水域/边界有 -5 m 级噪声，不修会被当成深洼：
+   既放大了最大水深（25.6 vs 18.0 m），又充当连通枢纽把面积抬高（2074 vs 1424 km²）。 */
+{
+  const src = Float32Array.from(elev), win = []
+  for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++) {
+    const i = r * cols + c
+    if (water[i] || src[i] >= 5) continue
+    win.length = 0
+    for (let dr = -2; dr <= 2; dr++) for (let dc = -2; dc <= 2; dc++) {
+      const rr = r + dr, cc = c + dc
+      if (rr < 0 || rr >= rows || cc < 0 || cc >= cols) continue
+      const v = src[rr * cols + cc]
+      if (!water[rr * cols + cc] && v >= 5) win.push(v)
+    }
+    if (win.length) { win.sort((a, b) => a - b); elev[i] = win[win.length >> 1] } else elev[i] = 5
+  }
+}
+const seeds = []; for (let i=0;i<water.length;i++) if (water[i]) seeds.push(i)
+const rowArea = new Float64Array(rows)
+for (let row=0; row<rows; row++) {
+  const l1=(south+row*cellDeg)*Math.PI/180, l2=(south+(row+1)*cellDeg)*Math.PI/180
+  rowArea[row] = 6371008.8*6371008.8*(cellDeg*Math.PI/180)*(Math.sin(l2)-Math.sin(l1))
+}
+const meanCell = rowArea.reduce((a,b)=>a+b,0)/rows
+const cvs = document.getElementById('map'), ctx = cvs.getContext('2d')
+const img = ctx.createImageData(cols, rows)
+const visited = new Uint8Array(cols*rows), stack = new Int32Array(cols*rows)
+
+function flood(level, useBarrier = true) {
+  visited.fill(0)
+  let top = 0, cells = 0, depthSum = 0, maxDepth = 0, dry = 0
+  for (const s of seeds) { visited[s]=1; stack[top++]=s }
+  while (top>0) {
+    const i = stack[--top]; cells++
+    if (!water[i]) { const d = level - (elev[i]+OFF); depthSum += d; dry++; if (d>maxDepth) maxDepth=d }
+    const r=(i/cols)|0, c=i%cols
+    for (const n of [r>0?i-cols:-1, r<rows-1?i+cols:-1, c>0?i-1:-1, c<cols-1?i+1:-1]) {
+      if (n<0 || visited[n] || (useBarrier && barrier[n])) continue
+      if (elev[n]+OFF >= level) continue
+      visited[n]=1; stack[top++]=n
+    }
+  }
+  return { area: cells*meanCell/1e6, maxDepth, meanDepth: dry?depthSum/dry:0 }
+}
+
+function render(level) {
+  const statUpper = flood(level, false) // 先算上界（会覆盖 visited）
+  const stat = flood(level, true) // 再算下界，visited 保留下界结果用于着色
+  for (let row=0; row<rows; row++) for (let c=0;c<cols;c++) {
+    const i=row*cols+c, t=((rows-1-row)*cols+c)*4, h=elev[i]+OFF
+    let col
+    if (water[i]) col = COLORS.water
+    else if (visited[i]) { const k=Math.min(1,Math.max(0,(level-h)/8)); col=[120-90*k,200-110*k,235-30*k].map(Math.round) }
+    else if (h < level) col = COLORS.dry
+    else { const g = Math.max(150, Math.min(235, 205 - h*0.8)); col=[g,g-4,g-10] }
+    if (ridge[i] && !water[i] && !visited[i]) col=[200,60,60]
+    img.data[t]=col[0]; img.data[t+1]=col[1]; img.data[t+2]=col[2]; img.data[t+3]=255
+  }
+  ctx.putImageData(img,0,0)
+  const toPx = ([lng,lat]) => [ (lng-west)/cellDeg-0.5, rows-1-((lat-south)/cellDeg-0.5) ]
+  ctx.lineWidth=1.4; ctx.strokeStyle='rgba(235,120,20,0.9)'
+  for (const el of levees.elements) { const g=el.geometry||[]; if(g.length<2) continue
+    ctx.beginPath(); g.forEach((p,k)=>{ const [x,y]=toPx([p.lon,p.lat]); k?ctx.lineTo(x,y):ctx.moveTo(x,y) }); ctx.stroke() }
+  ctx.strokeStyle='rgba(70,70,70,0.75)'; ctx.lineWidth=1
+  for (const f of bands.features) { const polys = f.geometry.type==='MultiPolygon'?f.geometry.coordinates:[f.geometry.coordinates]
+    for (const poly of polys) for (const ring of poly) { ctx.beginPath()
+      ring.forEach((p,k)=>{ const [x,y]=toPx(p); k?ctx.lineTo(x,y):ctx.moveTo(x,y) }); ctx.stroke() } }
+  document.getElementById('lvl').textContent = level.toFixed(1)+' m'
+  document.getElementById('rise').textContent = (level-23.93>=0?'+':'')+(level-23.93).toFixed(2)+' m'
+  document.getElementById('areaLower').textContent = stat.area.toFixed(1)+' km²'
+  document.getElementById('areaUpper').textContent = statUpper.area.toFixed(1)+' km²'
+  document.getElementById('depth').textContent = stat.maxDepth.toFixed(1)+' m（平均 '+stat.meanDepth.toFixed(2)+' m）'
+}
+const slider = document.getElementById('slider')
+slider.addEventListener('input', () => render(Number(slider.value)))
+render(Number(slider.value))
+</script>
+</body>
+</html>

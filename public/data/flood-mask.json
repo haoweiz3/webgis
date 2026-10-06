@@ -1,0 +1,16 @@
+{
+  "note": "栅格淹没掩膜：bit0=河道种子，bit1=堤线屏障；行列与 dem-grid.json 完全一致",
+  "grid": {
+    "west": 113.8,
+    "south": 30.14,
+    "cellDeg": 0.001,
+    "cols": 1000,
+    "rows": 720,
+    "cellMetersLng": 96,
+    "cellMetersLat": 111
+  },
+  "waterDatumOffsetM": 1.87,
+  "seedCells": 23212,
+  "barrierCells": 75202,
+  "generatedAt": "2026-10-01T15:41:52.025Z"
+}

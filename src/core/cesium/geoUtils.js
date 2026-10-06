@@ -1,5 +1,6 @@
 import * as Cesium from 'cesium'
 import { DATUM_OFFSET_M } from '@/config/scene.js'
+import { getTerrainExaggeration } from '@/core/terrainState.js'
 
 /**
  * 空间计算工具
@@ -54,21 +55,32 @@ export function formatArea(m2) {
   return m2.toFixed(1) + ' m²'
 }
 
-/** 吴淞高程 → 场景高程（演示用固定偏移，生产环境应做基准转换） */
+/**
+ * 吴淞高程 → 场景高程
+ * 先按演示用固定偏移换算基准，再乘垂直夸张倍数。
+ * 地形网格由 globe.terrainExaggeration 按同一倍数放大，两者必须成对使用，
+ * 否则水面会被放大后的地形埋掉（见 core/terrainState.js 的说明）。
+ */
 export function wusongToScene(wusongM) {
-  return wusongM + DATUM_OFFSET_M
+  return (wusongM + DATUM_OFFSET_M) * getTerrainExaggeration()
 }
 
 /** 场景高程 → 吴淞高程 */
 export function sceneToWusong(sceneM) {
-  return sceneM - DATUM_OFFSET_M
+  return sceneM / getTerrainExaggeration() - DATUM_OFFSET_M
 }
 
 /**
  * 沿线段采样地形高程
  * 返回 { lngLats, distances, elevations }，用于剖面分析。
  */
-export async function sampleTerrainProfile(terrainProvider, start, end, sampleCount = 80) {
+export async function sampleTerrainProfile(
+  terrainProvider,
+  start,
+  end,
+  sampleCount = 80,
+  sampler = null
+) {
   const lngLats = []
   for (let i = 0; i < sampleCount; i++) {
     const t = sampleCount === 1 ? 0 : i / (sampleCount - 1)
@@ -77,11 +89,19 @@ export async function sampleTerrainProfile(terrainProvider, start, end, sampleCo
 
   const cartographics = lngLats.map(([lng, lat]) => Cesium.Cartographic.fromDegrees(lng, lat))
   let sampled = cartographics
-  try {
-    sampled = await Cesium.sampleTerrainMostDetailed(terrainProvider, cartographics)
-    if (!sampled || sampled.some((c) => !Number.isFinite(c.height))) sampled = cartographics
-  } catch (err) {
-    console.warn('[profile] 地形采样失败，使用椭球高近似', err)
+  if (typeof sampler === 'function') {
+    // 本地 DEM：直接查原始格网，不走地形瓦片
+    sampled = cartographics.map((c) => {
+      const height = sampler(Cesium.Math.toDegrees(c.longitude), Cesium.Math.toDegrees(c.latitude))
+      return new Cesium.Cartographic(c.longitude, c.latitude, Number.isFinite(height) ? height : 0)
+    })
+  } else {
+    try {
+      sampled = await Cesium.sampleTerrainMostDetailed(terrainProvider, cartographics)
+      if (!sampled || sampled.some((c) => !Number.isFinite(c.height))) sampled = cartographics
+    } catch (err) {
+      console.warn('[profile] 地形采样失败，使用椭球高近似', err)
+    }
   }
 
   const distances = []

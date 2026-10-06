@@ -19,7 +19,7 @@ const data = useDataStore()
 
 const TOOL_TEXT = {
   'measure-distance': '进行中：距离量算（点击场景添加测点）',
-  'measure-area': '进行中：面积量算（依次点击边界点）',
+  'measure-area': '进行中：面积量算（依次点击边界点，点回起点闭合）',
   profile: '进行中：剖面分析（依次点击起点与终点）'
 }
 

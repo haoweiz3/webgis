@@ -87,13 +87,14 @@ export default defineModule({
     function applyBaseMap(id) {
       const config = available.find((item) => item.id === id) || available[0]
       if (baseLayer) viewer.imageryLayers.remove(baseLayer, true)
-      baseLayer = viewer.imageryLayers.addImageryProvider(createProvider(config))
+      // 索引 0：底图永远垫在最底层，这样地形分层设色等叠加层不会被换底图冲掉
+      baseLayer = viewer.imageryLayers.addImageryProvider(createProvider(config), 0)
       baseLayer.show = imageryVisible
       ctx.scene.baseMapId = config.id
       if (annotationLayer) viewer.imageryLayers.raiseToTop(annotationLayer)
     }
 
-    baseLayer = viewer.imageryLayers.addImageryProvider(createProvider(available[0]))
+    baseLayer = viewer.imageryLayers.addImageryProvider(createProvider(available[0]), 0)
     annotationLayer = viewer.imageryLayers.addImageryProvider(createAnnotationProvider())
 
     return {

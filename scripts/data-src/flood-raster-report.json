@@ -1,0 +1,92 @@
+{
+  "generatedAt": "2026-10-02T08:45:09.963Z",
+  "dem": {
+    "source": "FABDEM V1-2（去建筑与树冠，Copernicus DEM GLO-30 派生）",
+    "license": "FABDEM © University of Bristol，CC BY-NC-SA 4.0（非商用、需署名）",
+    "verticalDatum": "随 Copernicus DEM（EGM2008 似大地水准面），使用前需与吴淞基准标定",
+    "grid": {
+      "west": 113.8,
+      "south": 30.14,
+      "cellDeg": 0.001,
+      "cols": 1000,
+      "rows": 720,
+      "cellMetersLng": 96,
+      "cellMetersLat": 111
+    },
+    "elevationRangeMeters": [
+      -5.8,
+      407.8
+    ]
+  },
+  "datumCalibration": {
+    "referenceStation": "WL06 汉口（武汉关）",
+    "referenceLevelWusong": 23.87,
+    "demWaterSurfaceMedian": 15,
+    "demWaterSurfaceSpreadMeters": 29.1,
+    "offsetMeters": 1.87,
+    "assumption": "假定 DEM 成像时为枯水期水面，以汉口站序列最低水位作为吴淞基准锚点"
+  },
+  "outliersRepaired": 2469,
+  "waterCells": 23212,
+  "diagnostics": {
+    "smoothingSensitivity": {
+      "level": 27.3,
+      "rawConnectedKm2": 5462.47,
+      "smoothedConnectedKm2": 5586.33,
+      "rawNewlyFloodedKm2": 5215.19,
+      "smoothedNewlyFloodedKm2": 5339.04
+    },
+    "note": "5×5 中值平滑用于检验城区建筑/树冠伪高值对连通性的影响"
+  },
+  "preview": {
+    "file": "flood-raster-preview.png",
+    "level": 27.3,
+    "legend": "深蓝=河道；青蓝=连通淹没；淡黄=低于水位但未连通（堤防或城区伪高值阻挡）；白线=现有示意单元边界"
+  },
+  "levels": [
+    {
+      "levelWusong": 26.5,
+      "riseAboveBaseline": 2.57,
+      "allBelowLevelKm2": 5231.67,
+      "lowerBoundKm2": 895.88,
+      "upperBoundKm2": 5192.47,
+      "lowerNewLandKm2": 648.59,
+      "meanDepthM": 3.6684643713357,
+      "maxDepthM": 17.52999973297119,
+      "unitMethodKm2": 209.07
+    },
+    {
+      "levelWusong": 26.6,
+      "riseAboveBaseline": 2.67,
+      "allBelowLevelKm2": 5270.22,
+      "lowerBoundKm2": 899.65,
+      "upperBoundKm2": 5232.26,
+      "lowerNewLandKm2": 652.36,
+      "meanDepthM": 3.7477471845284143,
+      "maxDepthM": 17.629999732971193,
+      "unitMethodKm2": 209.07
+    },
+    {
+      "levelWusong": 26.7,
+      "riseAboveBaseline": 2.77,
+      "allBelowLevelKm2": 5303.82,
+      "lowerBoundKm2": 1106.19,
+      "upperBoundKm2": 5268.7,
+      "lowerNewLandKm2": 858.9,
+      "meanDepthM": 3.904103008632475,
+      "maxDepthM": 17.72999973297119,
+      "unitMethodKm2": 209.07
+    },
+    {
+      "levelWusong": 26.8,
+      "riseAboveBaseline": 2.87,
+      "allBelowLevelKm2": 5337.9,
+      "lowerBoundKm2": 1110.83,
+      "upperBoundKm2": 5301.49,
+      "lowerNewLandKm2": 863.54,
+      "meanDepthM": 3.982878587660734,
+      "maxDepthM": 17.829999732971192,
+      "unitMethodKm2": 209.07
+    }
+  ]
+}

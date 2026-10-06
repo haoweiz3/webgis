@@ -3,6 +3,7 @@ import * as coord from '../cesium/coord.js'
 import * as geo from '../cesium/geoUtils.js'
 import { flyTo, flyToFeature } from '../cesium/camera.js'
 import { getViewer } from '../viewerHolder.js'
+import { getTerrainSampler, getDemGrid } from '../terrainState.js'
 import { createDataService } from '../../services/dataService.js'
 import { useSceneStore } from '../../stores/scene.js'
 import { useTimeStore } from '../../stores/time.js'
@@ -34,6 +35,14 @@ export function createContext() {
     },
     get terrainProvider() {
       return getViewer()?.terrainProvider ?? null
+    },
+    /** 本地 DEM 采高函数；用在线地形时为 null，剖面会自动改用 Cesium 采样 */
+    get localTerrainSampler() {
+      return getTerrainSampler()
+    },
+    /** 本地 DEM 原始格网；未加载本地地形时为 null */
+    get demGrid() {
+      return getDemGrid()
     },
     toast(message, type = 'info') {
       eventBus.emit('ui:toast', { message, type, at: Date.now() })

@@ -1,0 +1,289 @@
+{
+  "generatedAt": "2026-09-28T17:34:48.423Z",
+  "dem": {
+    "source": "Terrain Tiles（Mapzen / AWS Open Data），SRTM 等 30 m 派生",
+    "license": "Terrain Tiles © Mapzen，数据源 SRTM 等（开放数据）",
+    "verticalDatum": "EGM96 正高（米），需与吴淞基准做标定",
+    "zoom": 12,
+    "grid": {
+      "west": 113.8,
+      "south": 30.14,
+      "cellDeg": 0.001,
+      "cols": 1000,
+      "rows": 720,
+      "cellMetersLng": 96,
+      "cellMetersLat": 111
+    },
+    "elevationRangeMeters": [
+      -97.6,
+      400.3
+    ]
+  },
+  "datumCalibration": {
+    "referenceStation": "WL06 汉口（武汉关）",
+    "referenceLevelWusong": 23.87,
+    "demWaterSurfaceMedian": 16,
+    "demWaterSurfaceSpreadMeters": 131.1,
+    "offsetMeters": 7.87,
+    "assumption": "假定 DEM 成像时为枯水期水面，以汉口站序列最低水位作为吴淞基准锚点"
+  },
+  "outliersRepaired": 65,
+  "waterCells": 23212,
+  "diagnostics": {
+    "smoothingSensitivity": {
+      "level": 27.3,
+      "rawConnectedKm2": 266.88,
+      "smoothedConnectedKm2": 263.59,
+      "rawNewlyFloodedKm2": 19.59,
+      "smoothedNewlyFloodedKm2": 16.3
+    },
+    "note": "5×5 中值平滑用于检验城区建筑/树冠伪高值对连通性的影响"
+  },
+  "preview": {
+    "file": "flood-raster-preview-srtm.png",
+    "level": 27.3,
+    "legend": "深蓝=河道；青蓝=连通淹没；淡黄=低于水位但未连通（堤防或城区伪高值阻挡）；白线=现有示意单元边界"
+  },
+  "levels": [
+    {
+      "level": 20,
+      "unitAreaKm2": 0,
+      "allAreaKm2": 39.69,
+      "connectedAreaKm2": 247.35,
+      "newlyFloodedKm2": 0.06,
+      "meanDepth": 0.6299991607666016,
+      "maxDepth": 1.3299999237060547,
+      "lowestElevation": 18.670000076293945,
+      "connectedCells": 23218,
+      "dryNew": 6
+    },
+    {
+      "level": 20.5,
+      "unitAreaKm2": 0,
+      "allAreaKm2": 44.01,
+      "connectedAreaKm2": 247.35,
+      "newlyFloodedKm2": 0.06,
+      "meanDepth": 1.1299991607666016,
+      "maxDepth": 1.8299999237060547,
+      "lowestElevation": 18.670000076293945,
+      "connectedCells": 23218,
+      "dryNew": 6
+    },
+    {
+      "level": 21,
+      "unitAreaKm2": 0,
+      "allAreaKm2": 55.77,
+      "connectedAreaKm2": 247.41,
+      "newlyFloodedKm2": 0.13,
+      "meanDepth": 0.8883325258890787,
+      "maxDepth": 2.3299999237060547,
+      "lowestElevation": 18.670000076293945,
+      "connectedCells": 23224,
+      "dryNew": 12
+    },
+    {
+      "level": 21.5,
+      "unitAreaKm2": 0,
+      "allAreaKm2": 63.58,
+      "connectedAreaKm2": 247.5,
+      "newlyFloodedKm2": 0.21,
+      "meanDepth": 0.9399993896484375,
+      "maxDepth": 2.8299999237060547,
+      "lowestElevation": 18.670000076293945,
+      "connectedCells": 23232,
+      "dryNew": 20
+    },
+    {
+      "level": 22,
+      "unitAreaKm2": 0,
+      "allAreaKm2": 102.63,
+      "connectedAreaKm2": 252.65,
+      "newlyFloodedKm2": 5.36,
+      "meanDepth": 0.2822855348378479,
+      "maxDepth": 3.3299999237060547,
+      "lowestElevation": 18.670000076293945,
+      "connectedCells": 23715,
+      "dryNew": 503
+    },
+    {
+      "level": 22.5,
+      "unitAreaKm2": 0,
+      "allAreaKm2": 119.62,
+      "connectedAreaKm2": 253.34,
+      "newlyFloodedKm2": 6.05,
+      "meanDepth": 0.7231331039482439,
+      "maxDepth": 3.8299999237060547,
+      "lowestElevation": 18.670000076293945,
+      "connectedCells": 23780,
+      "dryNew": 568
+    },
+    {
+      "level": 23,
+      "unitAreaKm2": 0,
+      "allAreaKm2": 207.24,
+      "connectedAreaKm2": 255.6,
+      "newlyFloodedKm2": 8.31,
+      "meanDepth": 0.9453839106437487,
+      "maxDepth": 4.329999923706055,
+      "lowestElevation": 18.670000076293945,
+      "connectedCells": 23992,
+      "dryNew": 780
+    },
+    {
+      "level": 23.5,
+      "unitAreaKm2": 0,
+      "allAreaKm2": 248.76,
+      "connectedAreaKm2": 256.3,
+      "newlyFloodedKm2": 9.01,
+      "meanDepth": 1.352694358104228,
+      "maxDepth": 4.829999923706055,
+      "lowestElevation": 18.670000076293945,
+      "connectedCells": 24058,
+      "dryNew": 846
+    },
+    {
+      "level": 24,
+      "unitAreaKm2": 84.85,
+      "allAreaKm2": 646.31,
+      "connectedAreaKm2": 257.33,
+      "newlyFloodedKm2": 10.05,
+      "meanDepth": 1.6827034631690696,
+      "maxDepth": 5.329999923706055,
+      "lowestElevation": 18.670000076293945,
+      "connectedCells": 24155,
+      "dryNew": 943
+    },
+    {
+      "level": 24.5,
+      "unitAreaKm2": 84.85,
+      "allAreaKm2": 719.32,
+      "connectedAreaKm2": 258.31,
+      "newlyFloodedKm2": 11.03,
+      "meanDepth": 2.0275838566287128,
+      "maxDepth": 6.329999923706055,
+      "lowestElevation": 18.170000076293945,
+      "connectedCells": 24247,
+      "dryNew": 1035
+    },
+    {
+      "level": 25,
+      "unitAreaKm2": 84.85,
+      "allAreaKm2": 850.75,
+      "connectedAreaKm2": 259.74,
+      "newlyFloodedKm2": 12.45,
+      "meanDepth": 2.273027529361617,
+      "maxDepth": 6.829999923706055,
+      "lowestElevation": 18.170000076293945,
+      "connectedCells": 24381,
+      "dryNew": 1169
+    },
+    {
+      "level": 25.5,
+      "unitAreaKm2": 209.07,
+      "allAreaKm2": 934.86,
+      "connectedAreaKm2": 260.78,
+      "newlyFloodedKm2": 13.5,
+      "meanDepth": 2.5839061571465956,
+      "maxDepth": 7.329999923706055,
+      "lowestElevation": 18.170000076293945,
+      "connectedCells": 24479,
+      "dryNew": 1267
+    },
+    {
+      "level": 26,
+      "unitAreaKm2": 209.07,
+      "allAreaKm2": 1129.47,
+      "connectedAreaKm2": 262.22,
+      "newlyFloodedKm2": 14.94,
+      "meanDepth": 2.828501419742165,
+      "maxDepth": 7.829999923706055,
+      "lowestElevation": 18.170000076293945,
+      "connectedCells": 24614,
+      "dryNew": 1402
+    },
+    {
+      "level": 26.5,
+      "unitAreaKm2": 209.07,
+      "allAreaKm2": 1239.96,
+      "connectedAreaKm2": 263.78,
+      "newlyFloodedKm2": 16.49,
+      "meanDepth": 3.073280922202177,
+      "maxDepth": 8.329999923706055,
+      "lowestElevation": 18.170000076293945,
+      "connectedCells": 24760,
+      "dryNew": 1548
+    },
+    {
+      "level": 27,
+      "unitAreaKm2": 375.8,
+      "allAreaKm2": 1474.42,
+      "connectedAreaKm2": 265.54,
+      "newlyFloodedKm2": 18.25,
+      "meanDepth": 3.278393887387892,
+      "maxDepth": 8.829999923706055,
+      "lowestElevation": 18.170000076293945,
+      "connectedCells": 24925,
+      "dryNew": 1713
+    },
+    {
+      "level": 27.5,
+      "unitAreaKm2": 375.8,
+      "allAreaKm2": 1614.76,
+      "connectedAreaKm2": 268.81,
+      "newlyFloodedKm2": 21.52,
+      "meanDepth": 3.39306855343356,
+      "maxDepth": 9.329999923706055,
+      "lowestElevation": 18.170000076293945,
+      "connectedCells": 25232,
+      "dryNew": 2020
+    },
+    {
+      "level": 28,
+      "unitAreaKm2": 375.8,
+      "allAreaKm2": 1834.4,
+      "connectedAreaKm2": 271.07,
+      "newlyFloodedKm2": 23.78,
+      "meanDepth": 3.5678576628367105,
+      "maxDepth": 9.829999923706055,
+      "lowestElevation": 18.170000076293945,
+      "connectedCells": 25444,
+      "dryNew": 2232
+    },
+    {
+      "level": 28.5,
+      "unitAreaKm2": 576.7,
+      "allAreaKm2": 2001.61,
+      "connectedAreaKm2": 273.07,
+      "newlyFloodedKm2": 25.78,
+      "meanDepth": 3.785743035560797,
+      "maxDepth": 10.329999923706055,
+      "lowestElevation": 18.170000076293945,
+      "connectedCells": 25632,
+      "dryNew": 2420
+    },
+    {
+      "level": 29,
+      "unitAreaKm2": 576.7,
+      "allAreaKm2": 2244.69,
+      "connectedAreaKm2": 276.68,
+      "newlyFloodedKm2": 29.39,
+      "meanDepth": 3.8858890415923066,
+      "maxDepth": 10.829999923706055,
+      "lowestElevation": 18.170000076293945,
+      "connectedCells": 25971,
+      "dryNew": 2759
+    },
+    {
+      "level": 29.5,
+      "unitAreaKm2": 576.7,
+      "allAreaKm2": 2439.78,
+      "connectedAreaKm2": 280.89,
+      "newlyFloodedKm2": 33.6,
+      "meanDepth": 3.979238279726056,
+      "maxDepth": 11.329999923706055,
+      "lowestElevation": 18.170000076293945,
+      "connectedCells": 26366,
+      "dryNew": 3154
+    }
+  ]
+}

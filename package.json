@@ -10,6 +10,11 @@
     "preview": "vite preview",
     "build:data": "node scripts/build-data.mjs",
     "fetch:water": "node scripts/fetch-water-osm.mjs",
+    "fetch:dem": "node scripts/fetch-dem-terrarium.mjs",
+    "analyze:flood": "node scripts/analyze-flood-raster.mjs",
+    "import:fabdem": "node scripts/import-fabdem.mjs",
+    "fetch:levees": "node scripts/fetch-levees-osm.mjs",
+    "derive:levees": "node scripts/derive-levees-dem.mjs",
     "verify:gcj02": "node scripts/verify-gcj02.mjs",
     "verify:data": "node scripts/verify-data.mjs",
     "verify:camera": "node scripts/verify-camera.mjs"

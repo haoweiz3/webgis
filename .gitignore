@@ -42,5 +42,14 @@ coverage/
 *.swp
 *~
 
+# ---------- 演示文稿构建中间产物（PPT 成品在 docs/答辩/） ----------
+.codex-ppt-build/
+
+# ---------- 图表工具临时目录（artifact-tool 生成的候选文件） ----------
+.chart-data-*/
+
 # ---------- 数据抓取缓存（可由 pnpm fetch:water 重新生成，不必入库） ----------
 scripts/data-src/raw-osm-water.json
+scripts/data-src/dem-tiles/
+# FABDEM 原始下载（10°×10° 分块 zip / GeoTIFF，单文件可达 1 GB，不入库）
+scripts/data-src/fabdem/
