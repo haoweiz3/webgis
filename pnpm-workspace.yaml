@@ -1,11 +1,11 @@
+# 依赖构建白名单
+# ------------------------------------------------------------------
+# pnpm 11 只认这里的 allowBuilds（包名 → 是否允许运行安装脚本），
+# 既不读 package.json 的 pnpm 字段，也不再使用 onlyBuiltDependencies。
+# 少写这些 true，pnpm install 会以 ERR_PNPM_IGNORED_BUILDS 退出码 1 结束，
+# CI 会直接卡在安装步骤（实测复现过）。
 allowBuilds:
-  '@parcel/watcher': set this to true or false
-  esbuild: set this to true or false
-  protobufjs: set this to true or false
-  vue-demi: set this to true or false
-# pnpm 10+ 的依赖构建白名单（pnpm 11 已不再读取 package.json 中的 pnpm 字段）
-onlyBuiltDependencies:
-  - '@parcel/watcher'
-  - esbuild
-  - protobufjs
-  - vue-demi
+  '@parcel/watcher': true
+  esbuild: true
+  protobufjs: true
+  vue-demi: true
